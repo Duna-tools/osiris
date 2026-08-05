@@ -1,0 +1,12 @@
+[package]
+name = "osiris-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+osiris-domain = { workspace = true }
+osiris-application = { workspace = true }
+osiris-mcp = { workspace = true }
+osiris-policy = { workspace = true }
+osiris-ipc-client = { workspace = true }
+osiris-telemetry = { workspace = true }

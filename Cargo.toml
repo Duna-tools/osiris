@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/osiris-domain",
+    "crates/osiris-application",
+    "crates/osiris-mcp",
+    "crates/osiris-policy",
+    "crates/osiris-ipc-contract",
+    "crates/osiris-ipc-client",
+    "crates/osiris-telemetry",
+    "crates/osiris-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://example.invalid/osiris"
+
+[workspace.dependencies]
+osiris-domain = { path = "crates/osiris-domain" }
+osiris-application = { path = "crates/osiris-application" }
+osiris-policy = { path = "crates/osiris-policy" }
+osiris-ipc-contract = { path = "crates/osiris-ipc-contract" }
+osiris-ipc-client = { path = "crates/osiris-ipc-client" }
+osiris-mcp = { path = "crates/osiris-mcp" }
+osiris-telemetry = { path = "crates/osiris-telemetry" }
+
+# ponytail: single test runner for the whole workspace
+[workspace.metadata]
+
+[profile.release]
+lto = true

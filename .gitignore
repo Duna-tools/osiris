@@ -1,0 +1,10 @@
+# Núcleo
+target/
+
+# Cerebro Obsidian (privado, no se versiona)
+docs/
+
+# Local / IDE
+*.local
+.idea/
+.vscode/
