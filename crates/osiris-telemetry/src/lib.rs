@@ -31,6 +31,9 @@ fn filter(log_level: &str) -> Result<EnvFilter, String> {
 
 /// Inicializa el suscriptor global de logs (formato texto, con target y nivel).
 ///
+/// Escribe en **stderr**: stdout es el canal del protocolo MCP por stdio y un
+/// log allí corrompería el framing JSON-RPC.
+///
 /// Debe llamarse una sola vez al arrancar el proceso.
 ///
 /// # Errores
@@ -39,6 +42,7 @@ pub fn init(log_level: &str) -> Result<(), String> {
     let filter = filter(log_level)?;
     tracing_subscriber::fmt()
         .with_env_filter(filter)
+        .with_writer(std::io::stderr)
         .with_target(true)
         .try_init()
         .map_err(|e| format!("no se pudo inicializar el log: {e}"))
