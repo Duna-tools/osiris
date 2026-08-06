@@ -75,7 +75,11 @@ fn dispatch(request: &Request) -> Option<Response> {
     match request.method.as_str() {
         "initialize" => Some(handle_initialize(id, request)),
         "ping" => Some(Response::ok(id, json!({}))),
-        "tools/list" => Some(Response::ok(id, json!({ "tools": [] }))),
+        "tools/list" => Some(Response::ok(id, crate::tools::list())),
+        "tools/call" => Some(match crate::tools::call(&request.params) {
+            Ok(result) => Response::ok(id, result),
+            Err(e) => Response::err(id, e),
+        }),
         _ => Some(Response::err(
             id,
             RpcError::new(METHOD_NOT_FOUND, "method not found"),
