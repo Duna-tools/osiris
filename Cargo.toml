@@ -15,7 +15,6 @@ members = [
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://example.invalid/osiris"
 
 [workspace.dependencies]
 osiris-domain = { path = "crates/osiris-domain" }
@@ -25,9 +24,6 @@ osiris-ipc-contract = { path = "crates/osiris-ipc-contract" }
 osiris-ipc-client = { path = "crates/osiris-ipc-client" }
 osiris-mcp = { path = "crates/osiris-mcp" }
 osiris-telemetry = { path = "crates/osiris-telemetry" }
-
-# ponytail: single test runner for the whole workspace
-[workspace.metadata]
 
 [profile.release]
 lto = true

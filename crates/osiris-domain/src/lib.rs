@@ -61,8 +61,13 @@ impl DomainError {
             Self::Saturation(_) => true,
             Self::Ipc(_) => true,
             Self::Conflict(_) => true,
-            Self::Timeout(_) | Self::Godot(_) | Self::Validation(_) | Self::Authentication
-            | Self::Authorization(_) | Self::Compatibility(_) | Self::Internal(_) => false,
+            Self::Timeout(_)
+            | Self::Godot(_)
+            | Self::Validation(_)
+            | Self::Authentication
+            | Self::Authorization(_)
+            | Self::Compatibility(_)
+            | Self::Internal(_) => false,
         }
     }
 }
