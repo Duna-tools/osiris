@@ -2,8 +2,11 @@
 //!
 //! Mensajes JSON-RPC delimitados por líneas (spec MCP stdio). Los logs van a
 //! stderr para no contaminar stdout, que es el canal del protocolo.
-//! Métodos de esta fase: `initialize` (negociación de versión), `ping` y
-//! `tools/list` (vacío hasta T-022/T-023). Las notificaciones no responden.
+//!
+//! Ciclo de vida (spec MCP): antes de `initialize` solo se aceptan
+//! `initialize` y `ping`; el resto recibe -32002. `initialize` es una sola
+//! vez. Las notificaciones no responden nunca. En stdio la sesión ES la vida
+//! del proceso; expiración e inactividad se difieren al futuro modo HTTP.
 
 use std::io::{self, BufRead, Write};
 
@@ -12,13 +15,101 @@ use serde_json::{Value, json};
 
 use crate::jsonrpc::{INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, Request, Response, RpcError};
 
+/// Petición antes de completar `initialize`.
+pub const NOT_INITIALIZED: i64 = -32002;
+
 /// Versiones del protocolo MCP que este servidor acepta.
 const SUPPORTED_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 /// Versión que se propone cuando el cliente pide una no soportada (spec MCP).
 const LATEST_VERSION: &str = SUPPORTED_VERSIONS[0];
 
+/// Estado del servidor: el ciclo de vida MCP sobre stdio.
+#[derive(Debug, Default)]
+pub struct Server {
+    initialized: bool,
+}
+
+impl Server {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Procesa una línea JSON-RPC y devuelve la respuesta, si procede.
+    ///
+    /// `None` significa notificación: el protocolo prohíbe responderla.
+    pub fn handle_line(&mut self, line: &str) -> Option<Response> {
+        match parse(line) {
+            Ok(request) => self.dispatch(&request),
+            Err(response) => Some(*response),
+        }
+    }
+
+    fn dispatch(&mut self, request: &Request) -> Option<Response> {
+        if request.method.starts_with("notifications/") {
+            return None;
+        }
+        let id = request.id.clone()?;
+        match request.method.as_str() {
+            "initialize" => Some(self.handle_initialize(id, request)),
+            // El spec MCP permite pings antes de completar la inicialización.
+            "ping" => Some(Response::ok(id, json!({}))),
+            _ if !self.initialized => Some(Response::err(
+                id,
+                RpcError::new(
+                    NOT_INITIALIZED,
+                    "server not initialized: envía initialize primero",
+                ),
+            )),
+            "tools/list" => Some(Response::ok(id, crate::tools::list())),
+            "tools/call" => Some(match crate::tools::call(&request.params) {
+                Ok(result) => Response::ok(id, result),
+                Err(e) => Response::err(id, e),
+            }),
+            _ => Some(Response::err(
+                id,
+                RpcError::new(METHOD_NOT_FOUND, "method not found"),
+            )),
+        }
+    }
+
+    fn handle_initialize(&mut self, id: Value, request: &Request) -> Response {
+        if self.initialized {
+            return Response::err(
+                id,
+                RpcError::new(INVALID_REQUEST, "initialize ya completado"),
+            );
+        }
+        let requested = request
+            .params
+            .get("protocolVersion")
+            .and_then(Value::as_str);
+        let version = match requested {
+            Some(v) if SUPPORTED_VERSIONS.contains(&v) => v,
+            Some(_) => LATEST_VERSION,
+            None => {
+                return Response::err(
+                    id,
+                    RpcError::from_domain(&DomainError::Validation(
+                        "params.protocolVersion requerido".to_string(),
+                    )),
+                );
+            }
+        };
+        self.initialized = true;
+        Response::ok(
+            id,
+            json!({
+                "protocolVersion": version,
+                "capabilities": { "tools": {} },
+                "serverInfo": { "name": "osiris", "version": env!("CARGO_PKG_VERSION") },
+            }),
+        )
+    }
+}
+
 /// Bucle principal: lee líneas de stdin y escribe respuestas en stdout hasta EOF.
 pub fn run_stdio() -> io::Result<()> {
+    let mut server = Server::new();
     let stdin = io::stdin();
     let mut stdout = io::stdout().lock();
     for line in stdin.lock().lines() {
@@ -26,22 +117,12 @@ pub fn run_stdio() -> io::Result<()> {
         if line.trim().is_empty() {
             continue;
         }
-        if let Some(response) = handle_line(&line) {
+        if let Some(response) = server.handle_line(&line) {
             writeln!(stdout, "{}", response.to_json())?;
             stdout.flush()?;
         }
     }
     Ok(())
-}
-
-/// Procesa una línea JSON-RPC y devuelve la respuesta, si procede.
-///
-/// `None` significa notificación: el protocolo prohíbe responderla.
-pub fn handle_line(line: &str) -> Option<Response> {
-    match parse(line) {
-        Ok(request) => dispatch(&request),
-        Err(response) => Some(*response),
-    }
 }
 
 fn parse(line: &str) -> Result<Request, Box<Response>> {
@@ -67,65 +148,30 @@ fn parse(line: &str) -> Result<Request, Box<Response>> {
     Ok(request)
 }
 
-fn dispatch(request: &Request) -> Option<Response> {
-    if request.method.starts_with("notifications/") {
-        return None;
-    }
-    let id = request.id.clone()?;
-    match request.method.as_str() {
-        "initialize" => Some(handle_initialize(id, request)),
-        "ping" => Some(Response::ok(id, json!({}))),
-        "tools/list" => Some(Response::ok(id, crate::tools::list())),
-        "tools/call" => Some(match crate::tools::call(&request.params) {
-            Ok(result) => Response::ok(id, result),
-            Err(e) => Response::err(id, e),
-        }),
-        _ => Some(Response::err(
-            id,
-            RpcError::new(METHOD_NOT_FOUND, "method not found"),
-        )),
-    }
-}
-
-fn handle_initialize(id: Value, request: &Request) -> Response {
-    let requested = request
-        .params
-        .get("protocolVersion")
-        .and_then(Value::as_str);
-    let version = match requested {
-        Some(v) if SUPPORTED_VERSIONS.contains(&v) => v,
-        Some(_) => LATEST_VERSION,
-        None => {
-            return Response::err(
-                id,
-                RpcError::from_domain(&DomainError::Validation(
-                    "params.protocolVersion requerido".to_string(),
-                )),
-            );
-        }
-    };
-    Response::ok(
-        id,
-        json!({
-            "protocolVersion": version,
-            "capabilities": { "tools": {} },
-            "serverInfo": { "name": "osiris", "version": env!("CARGO_PKG_VERSION") },
-        }),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn call(line: &str) -> Value {
-        let response = handle_line(line).expect("debe responder");
+    fn call(server: &mut Server, line: &str) -> Value {
+        let response = server.handle_line(line).expect("debe responder");
         serde_json::from_str(&response.to_json()).unwrap()
+    }
+
+    fn initialized_server() -> Server {
+        let mut server = Server::new();
+        let r = call(
+            &mut server,
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        );
+        assert!(r["result"].is_object());
+        server
     }
 
     #[test]
     fn initialize_echoes_supported_version() {
+        let mut server = Server::new();
         let r = call(
+            &mut server,
             r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
         );
         assert_eq!(r["result"]["protocolVersion"], "2025-03-26");
@@ -135,7 +181,9 @@ mod tests {
 
     #[test]
     fn initialize_with_unsupported_version_offers_latest() {
+        let mut server = Server::new();
         let r = call(
+            &mut server,
             r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1999-01-01"}}"#,
         );
         assert_eq!(r["result"]["protocolVersion"], LATEST_VERSION);
@@ -143,36 +191,81 @@ mod tests {
 
     #[test]
     fn initialize_without_version_is_domain_validation_error() {
-        let r = call(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
+        let mut server = Server::new();
+        let r = call(
+            &mut server,
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+        );
         assert_eq!(r["error"]["code"], -32000);
         assert_eq!(r["error"]["data"]["code"], "validation");
         assert_eq!(r["error"]["data"]["retryable"], false);
     }
 
     #[test]
+    fn requests_before_initialize_are_rejected_except_ping() {
+        let mut server = Server::new();
+        let r = call(
+            &mut server,
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"osiris_diagnose"}}"#,
+        );
+        assert_eq!(r["error"]["code"], NOT_INITIALIZED);
+        // ping sí está permitido antes de initialize.
+        let r = call(&mut server, r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
+        assert_eq!(r["result"], json!({}));
+        // y la puerta no se abre sola: sigue rechazando hasta initialize.
+        let r = call(
+            &mut server,
+            r#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#,
+        );
+        assert_eq!(r["error"]["code"], NOT_INITIALIZED);
+    }
+
+    #[test]
+    fn initialize_is_single_shot() {
+        let mut server = initialized_server();
+        let r = call(
+            &mut server,
+            r#"{"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#,
+        );
+        assert_eq!(r["error"]["code"], INVALID_REQUEST);
+    }
+
+    #[test]
     fn unknown_method_is_method_not_found() {
-        let r = call(r#"{"jsonrpc":"2.0","id":9,"method":"nope/x"}"#);
+        let mut server = initialized_server();
+        let r = call(&mut server, r#"{"jsonrpc":"2.0","id":9,"method":"nope/x"}"#);
         assert_eq!(r["error"]["code"], -32601);
         assert_eq!(r["id"], 9);
     }
 
     #[test]
     fn malformed_json_is_parse_error_with_null_id() {
-        let r = call("esto no es json");
+        let mut server = Server::new();
+        let r = call(&mut server, "esto no es json");
         assert_eq!(r["error"]["code"], -32700);
         assert_eq!(r["id"], Value::Null);
     }
 
     #[test]
     fn wrong_jsonrpc_version_is_invalid_request() {
-        let r = call(r#"{"jsonrpc":"1.0","id":1,"method":"ping"}"#);
+        let mut server = Server::new();
+        let r = call(&mut server, r#"{"jsonrpc":"1.0","id":1,"method":"ping"}"#);
         assert_eq!(r["error"]["code"], -32600);
     }
 
     #[test]
     fn notifications_get_no_response() {
-        assert!(handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
-        assert!(handle_line(r#"{"jsonrpc":"2.0","method":"ping"}"#).is_none());
+        let mut server = initialized_server();
+        assert!(
+            server
+                .handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
+                .is_none()
+        );
+        assert!(
+            server
+                .handle_line(r#"{"jsonrpc":"2.0","method":"ping"}"#)
+                .is_none()
+        );
     }
 
     #[test]
