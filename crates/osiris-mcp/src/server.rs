@@ -7,6 +7,11 @@
 //! `initialize` y `ping`; el resto recibe -32002. `initialize` es una sola
 //! vez. Las notificaciones no responden nunca. En stdio la sesión ES la vida
 //! del proceso; expiración e inactividad se difieren al futuro modo HTTP.
+//!
+//! Límites (RF-035/RNF-001): mensaje máximo [`MAX_MESSAGE_BYTES`]; el
+//! procesamiento es secuencial (un mensaje a la vez), que es la estrategia de
+//! backpressure en stdio. Límite de duración y cancelación: pendientes hasta
+//! que existan herramientas de larga duración (Fase C+).
 
 use std::io::{self, BufRead, Write};
 
@@ -17,6 +22,13 @@ use crate::jsonrpc::{INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, Request, Re
 
 /// Petición antes de completar `initialize`.
 pub const NOT_INITIALIZED: i64 = -32002;
+
+/// Tamaño máximo de un mensaje JSON-RPC (bytes de la línea).
+///
+/// Nota: el peer de stdio es el proceso cliente que nos lanzó (confianza
+/// local); este tope acota memoria por mensaje como defensa básica, no contra
+/// un peer hostil (eso corresponderá al modo HTTP).
+pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Versiones del protocolo MCP que este servidor acepta.
 const SUPPORTED_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -38,6 +50,12 @@ impl Server {
     ///
     /// `None` significa notificación: el protocolo prohíbe responderla.
     pub fn handle_line(&mut self, line: &str) -> Option<Response> {
+        if line.len() > MAX_MESSAGE_BYTES {
+            return Some(Response::err(
+                Value::Null,
+                RpcError::new(INVALID_REQUEST, "message too large"),
+            ));
+        }
         match parse(line) {
             Ok(request) => self.dispatch(&request),
             Err(response) => Some(*response),
@@ -251,6 +269,21 @@ mod tests {
         let mut server = Server::new();
         let r = call(&mut server, r#"{"jsonrpc":"1.0","id":1,"method":"ping"}"#);
         assert_eq!(r["error"]["code"], -32600);
+    }
+
+    #[test]
+    fn oversized_message_is_rejected_and_server_survives() {
+        let mut server = initialized_server();
+        let big = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"ping","padding":"{}"}}"#,
+            "x".repeat(MAX_MESSAGE_BYTES)
+        );
+        let r = call(&mut server, &big);
+        assert_eq!(r["error"]["code"], -32600);
+        assert_eq!(r["error"]["message"], "message too large");
+        // El servidor sigue operativo tras el rechazo.
+        let r = call(&mut server, r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
+        assert_eq!(r["result"], json!({}));
     }
 
     #[test]
