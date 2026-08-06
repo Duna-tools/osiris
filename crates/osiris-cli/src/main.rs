@@ -37,9 +37,10 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    tracing::info!(
-        bind_addr = %cfg.bind_addr,
-        "osiris-server configurado (servidor MCP: pendiente, Fase B)"
-    );
+    tracing::info!(bind_addr = %cfg.bind_addr, "servidor MCP stdio iniciado");
+    if let Err(e) = osiris_mcp::server::run_stdio() {
+        tracing::error!(error = %e, "el servidor stdio terminó con error");
+        return ExitCode::FAILURE;
+    }
     ExitCode::SUCCESS
 }
