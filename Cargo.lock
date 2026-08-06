@@ -105,6 +105,7 @@ dependencies = [
  "osiris-policy",
  "osiris-telemetry",
  "serde",
+ "serde_json",
  "toml",
  "tracing",
 ]
