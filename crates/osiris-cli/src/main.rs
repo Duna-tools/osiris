@@ -32,9 +32,14 @@ fn main() -> ExitCode {
         }
     };
 
-    println!(
-        "osiris-server: bind_addr={} log_level={} (servidor MCP: pendiente, Fase B)",
-        cfg.bind_addr, cfg.log_level
+    if let Err(e) = osiris_telemetry::init(&cfg.log_level) {
+        eprintln!("error: {e}");
+        return ExitCode::from(2);
+    }
+
+    tracing::info!(
+        bind_addr = %cfg.bind_addr,
+        "osiris-server configurado (servidor MCP: pendiente, Fase B)"
     );
     ExitCode::SUCCESS
 }
