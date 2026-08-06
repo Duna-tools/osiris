@@ -10,3 +10,5 @@ osiris-mcp = { workspace = true }
 osiris-policy = { workspace = true }
 osiris-ipc-client = { workspace = true }
 osiris-telemetry = { workspace = true }
+toml = "1.1.4"
+serde = { version = "1.0.229", features = ["derive"] }
