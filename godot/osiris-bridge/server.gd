@@ -123,9 +123,13 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _get_version(id)
 		"get_active_scene":
 			return _get_active_scene(id)
-		"list_nodes":
-			return _list_nodes(id, msg.get("params", {}))
-		_:
+\t\t"list_nodes":
+\t\t\treturn _list_nodes(id, msg.get("params", {}))
+\t\t"get_property":
+\t\t\treturn _get_property(id, msg.get("params", {}))
+\t\t"list_resources":
+\t\t\treturn _list_resources(id, msg.get("params", {}))
+\t\t_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
 func _get_version(id: Variant) -> Dictionary:
@@ -191,6 +195,82 @@ func _ok(id: Variant, payload: Variant) -> Dictionary:
 
 func _error(id: Variant, code: String, message: String, retryable: bool = false) -> Dictionary:
 	return {"type": "response", "id": id if id != null else null, "error": {"code": code, "message": message, "retryable": retryable}}
+
+func _get_property(id: Variant, params: Dictionary) -> Dictionary:
+	var root := _editor.get_edited_scene_root()
+	if not root:
+		return _error(id, "godot", "no hay escena activa")
+	var node_path := params.get("path", ".")
+	var node := root
+	if node_path != ".":
+		node = root.get_node_or_null(NodePath(node_path))
+	if not node:
+		return _error(id, "godot", "nodo no encontrado: %s" % node_path)
+	var prop: String = params.get("property", "")
+	if prop == "":
+		return _error(id, "validation", "parámetro 'property' requerido")
+	var value: Variant = node.get(prop)
+	return _ok(id, {
+		"path": node_path,
+		"property": prop,
+		"value": _variant_to_json(value),
+	})
+
+func _list_resources(id: Variant, params: Dictionary) -> Dictionary:
+	var root := _editor.get_edited_scene_root()
+	if not root:
+		return _error(id, "godot", "no hay escena activa")
+	var node_path := params.get("path", ".")
+	var node := root
+	if node_path != ".":
+		node = root.get_node_or_null(NodePath(node_path))
+	if not node:
+		return _error(id, "godot", "nodo no encontrado: %s" % node_path)
+	var resources: Array = []
+	for prop: Dictionary in node.get_property_list():
+		if prop.type == TYPE_OBJECT and (prop.usage & PROPERTY_USAGE_STORAGE):
+			var val: Variant = node.get(prop.name)
+			if val and val is Resource:
+				resources.append({
+					"property": prop.name,
+					"path": val.resource_path,
+					"class": val.get_class(),
+				})
+	return _ok(id, {"resources": resources})
+
+func _variant_to_json(v: Variant, depth: int = 4) -> Variant:
+	if depth <= 0:
+		return "<max depth>"
+	match typeof(v):
+		TYPE_NIL: return null
+		TYPE_BOOL: return v
+		TYPE_INT, TYPE_FLOAT: return v
+		TYPE_STRING, TYPE_STRING_NAME: return v
+		TYPE_VECTOR2: return {"x": v.x, "y": v.y}
+		TYPE_VECTOR3: return {"x": v.x, "y": v.y, "z": v.z}
+		TYPE_VECTOR4: return {"x": v.x, "y": v.y, "z": v.z, "w": v.w}
+		TYPE_COLOR: return "#%02x%02x%02x%02x" % [int(v.r*255), int(v.g*255), int(v.b*255), int(v.a*255)]
+		TYPE_ARRAY, TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
+			var arr: Array = []
+			for i in range(mini(v.size(), 100)):
+				arr.append(_variant_to_json(v[i], depth - 1))
+			return arr
+		TYPE_DICTIONARY:
+			var d := {}
+			for key: Variant in v:
+				d[str(key)] = _variant_to_json(v[key], depth - 1)
+			return d
+		TYPE_OBJECT:
+			return str(v)
+		TYPE_RECT2: return {"position": _variant_to_json(v.position, 1), "size": _variant_to_json(v.size, 1)}
+		TYPE_TRANSFORM2D: return {"x": _variant_to_json(v.x, 1), "y": _variant_to_json(v.y, 1), "origin": _variant_to_json(v.origin, 1)}
+		TYPE_PLANE: return {"normal": _variant_to_json(v.normal, 1), "d": v.d}
+		TYPE_QUATERNION: return {"x": v.x, "y": v.y, "z": v.z, "w": v.w}
+		TYPE_AABB: return {"position": _variant_to_json(v.position, 1), "size": _variant_to_json(v.size, 1)}
+		TYPE_BASIS: return {"x": _variant_to_json(v.x, 1), "y": _variant_to_json(v.y, 1), "z": _variant_to_json(v.z, 1)}
+		TYPE_TRANSFORM3D: return {"basis": _variant_to_json(v.basis, 1), "origin": _variant_to_json(v.origin, 1)}
+		TYPE_PROJECTION: return {"x": _variant_to_json(v.x, 1), "y": _variant_to_json(v.y, 1), "z": _variant_to_json(v.z, 1), "w": _variant_to_json(v.w, 1)}
+		_: return str(v)
 
 func _generate_token() -> String:
 	var bytes := PackedByteArray()

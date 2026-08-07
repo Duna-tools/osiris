@@ -69,6 +69,43 @@ pub fn list() -> Value {
                     },
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "godot.scene.properties",
+                "title": "Propiedad de nodo",
+                "description": "Lee una propiedad de un nodo de la escena activa.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "NodePath relativo a la raíz de la escena. Por defecto: raíz.",
+                            "default": "."
+                        },
+                        "property": {
+                            "type": "string",
+                            "description": "Nombre de la propiedad (ej: 'position', 'visible', 'text'). Obligatorio."
+                        }
+                    },
+                    "required": ["property"],
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "godot.scene.resources",
+                "title": "Recursos de nodo",
+                "description": "Lista los recursos referenciados por un nodo (texturas, scripts, materiales, etc.).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "NodePath relativo a la raíz de la escena.",
+                            "default": "."
+                        }
+                    },
+                    "additionalProperties": false
+                }
             }
         ]
     })
@@ -85,7 +122,12 @@ pub fn call(params: &Value, ipc: Option<&mut IpcClient>) -> Result<Value, RpcErr
         .and_then(Value::as_str)
         .ok_or_else(|| RpcError::new(INVALID_PARAMS, "params.name requerido"))?;
     match name {
-        "osiris_diagnose" | "godot_diagnose" | "godot.scene.active" | "godot.scene.nodes" => {
+        "osiris_diagnose"
+        | "godot_diagnose"
+        | "godot.scene.active"
+        | "godot.scene.nodes"
+        | "godot.scene.properties"
+        | "godot.scene.resources" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc).map_err(|e| RpcError::from_domain(&e))
         }
@@ -113,6 +155,8 @@ mod tests {
         assert!(names.contains(&"godot_diagnose"));
         assert!(names.contains(&"godot.scene.active"));
         assert!(names.contains(&"godot.scene.nodes"));
+        assert!(names.contains(&"godot.scene.properties"));
+        assert!(names.contains(&"godot.scene.resources"));
     }
 
     #[test]
