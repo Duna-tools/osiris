@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 osiris-application = { workspace = true }
 osiris-domain.workspace = true
+osiris-ipc-client.workspace = true
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
