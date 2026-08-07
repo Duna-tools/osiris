@@ -9,7 +9,7 @@ var _server: RefCounted = null
 func _enter_tree() -> void:
 	randomize()
 	_server = preload("res://addons/osiris-bridge/server.gd").new()
-	_server.start(BIND_ADDR, BIND_PORT)
+	_server.start(BIND_ADDR, BIND_PORT, get_editor_interface())
 
 func _exit_tree() -> void:
 	if _server:

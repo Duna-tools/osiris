@@ -14,12 +14,19 @@ use serde_json::Value;
 /// devuelve `Ipc`. En el futuro pasará por el motor de políticas (ADR-005).
 pub fn handle_tool(
     name: &str,
-    _params: &Value,
+    params: &Value,
     ipc: Option<&mut IpcClient>,
 ) -> Result<Value, DomainError> {
     match name {
         "osiris_diagnose" => Ok(osiris_diagnose()),
-        "godot_diagnose" => godot_diagnose(ipc),
+        "godot_diagnose" => ipc_tool(ipc, "get_version", Value::Null, |client, result| {
+            serde_json::json!({
+                "godot_version": client.godot_version,
+                "godot_details": result,
+            })
+        }),
+        "godot.scene.active" => ipc_tool(ipc, "get_active_scene", Value::Null, plain_result()),
+        "godot.scene.nodes" => ipc_tool(ipc, "list_nodes", params.clone(), plain_result()),
         _ => Err(DomainError::Validation(format!(
             "herramienta desconocida: {name}"
         ))),
@@ -27,34 +34,36 @@ pub fn handle_tool(
 }
 
 fn osiris_diagnose() -> Value {
-    // mover de tools.rs para tener una sola fuente
+    let info = serde_json::json!({
+        "name": "osiris",
+        "version": env!("CARGO_PKG_VERSION"),
+        "protocolVersions": ["2025-06-18", "2025-03-26", "2024-11-05"],
+        "transport": "stdio",
+    });
     serde_json::json!({
-        "content": [{
-            "type": "text",
-            "text": serde_json::json!({
-                "name": "osiris",
-                "version": env!("CARGO_PKG_VERSION"),
-                "protocolVersions": ["2025-06-18", "2025-03-26", "2024-11-05"],
-                "transport": "stdio"
-            }).to_string(),
-        }],
+        "content": [{ "type": "text", "text": info.to_string() }],
         "isError": false,
     })
 }
 
-fn godot_diagnose(ipc: Option<&mut IpcClient>) -> Result<Value, DomainError> {
+fn plain_result() -> fn(&IpcClient, &Value) -> Value {
+    |_, result| result.clone()
+}
+
+/// Ejecuta una orden en el puente y envuelve el resultado como texto MCP.
+fn ipc_tool(
+    ipc: Option<&mut IpcClient>,
+    op: &str,
+    params: Value,
+    transform: impl FnOnce(&IpcClient, &Value) -> Value,
+) -> Result<Value, DomainError> {
     let client = ipc.ok_or_else(|| {
         DomainError::Ipc("el puente Godot no está configurado (usa --ipc-addr)".to_string())
     })?;
-    let godot_deep = client.call("get_version", Value::Null)?;
+    let result = client.call(op, params)?;
+    let payload = transform(client, &result);
     Ok(serde_json::json!({
-        "content": [{
-            "type": "text",
-            "text": serde_json::json!({
-                "godot_version": client.godot_version,
-                "godot_details": godot_deep,
-            }).to_string(),
-        }],
+        "content": [{ "type": "text", "text": payload.to_string() }],
         "isError": false,
     }))
 }

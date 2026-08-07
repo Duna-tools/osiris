@@ -20,7 +20,7 @@ pub fn list() -> Value {
             {
                 "name": "osiris_diagnose",
                 "title": "Diagnóstico del servidor",
-                "description": "Devuelve nombre, versión y versiones de protocolo soportadas. Solo lectura; no requiere capacidades.",
+                "description": "Devuelve nombre, versión y versiones de protocolo soportadas.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {},
@@ -30,10 +30,43 @@ pub fn list() -> Value {
             {
                 "name": "godot_diagnose",
                 "title": "Diagnóstico Godot",
-                "description": "Devuelve la versión de Godot y el nombre del proyecto. Requiere conexión al puente (--ipc-addr). Solo lectura.",
+                "description": "Devuelve la versión de Godot y el nombre del proyecto.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {},
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "godot.scene.active",
+                "title": "Escena activa",
+                "description": "Ruta, nombre raíz y número de nodos de la escena activa en el editor.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "godot.scene.nodes",
+                "title": "Nodos de la escena",
+                "description": "Lista los nodos de la escena activa a partir de una ruta, con profundidad y paginación configurables.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Ruta del nodo raíz desde el que listar (NodePath relativo a la raíz de la escena). Por defecto: raíz de la escena."
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "description": "Profundidad máxima de recorrido. Por defecto: 3, máximo: 20."
+                        },
+                        "max_nodes": {
+                            "type": "integer",
+                            "description": "Máximo de nodos a devolver. Por defecto: 500."
+                        }
+                    },
                     "additionalProperties": false
                 }
             }
@@ -52,7 +85,7 @@ pub fn call(params: &Value, ipc: Option<&mut IpcClient>) -> Result<Value, RpcErr
         .and_then(Value::as_str)
         .ok_or_else(|| RpcError::new(INVALID_PARAMS, "params.name requerido"))?;
     match name {
-        "osiris_diagnose" | "godot_diagnose" => {
+        "osiris_diagnose" | "godot_diagnose" | "godot.scene.active" | "godot.scene.nodes" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc).map_err(|e| RpcError::from_domain(&e))
         }
@@ -78,6 +111,8 @@ mod tests {
             .collect();
         assert!(names.contains(&"osiris_diagnose"));
         assert!(names.contains(&"godot_diagnose"));
+        assert!(names.contains(&"godot.scene.active"));
+        assert!(names.contains(&"godot.scene.nodes"));
     }
 
     #[test]

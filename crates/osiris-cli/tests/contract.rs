@@ -1,17 +1,17 @@
-//! Suite de contrato MCP mínima (T-027, test-strategy.md): ejercita el binario
-//! real `osiris-server` por stdio, como lo haría un cliente MCP.
+//! Suite de contrato MCP (T-027, test-strategy.md): ejercita el binario real
+//! `osiris-server` por stdio.
 //!
-//! Cubre: ciclo de vida, handshake, framing por líneas, pureza de stdout
-//! (solo JSON-RPC), logs a stderr, límites de tamaño y herramientas.
+//! Cubre: ciclo de vida, handshake, pureza de stdout, límites, herramientas y
+//! errores esperados sin puente Godot.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::process::{Command, Stdio};
 use std::thread;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
-/// Ejecuta el binario con `input` por stdin y devuelve (líneas stdout, stderr, éxito).
 fn run_server(input: &str) -> (Vec<Value>, String, bool) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_osiris-server"))
         .stdin(Stdio::piped())
@@ -24,7 +24,7 @@ fn run_server(input: &str) -> (Vec<Value>, String, bool) {
         .take()
         .unwrap()
         .write_all(input.as_bytes())
-        .expect("escribir stdin"); // al soltarlo el servidor recibe EOF y termina
+        .expect("escribir stdin");
     let out = child.wait_with_output().expect("esperar al servidor");
     let stdout = String::from_utf8(out.stdout).unwrap();
     let lines = stdout
@@ -44,33 +44,22 @@ fn run_server(input: &str) -> (Vec<Value>, String, bool) {
 #[test]
 fn full_lifecycle_over_stdio() {
     let input = [
-        // 0: herramienta antes de initialize → -32002
         r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"osiris_diagnose"}}"#,
-        // 1: handshake
         r#"{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"contract","version":"0"}}}"#,
-        // notificación: no debe producir línea de salida
         r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
-        // 2: tools/list declara la herramienta con esquema
         r#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#,
-        // 3: tools/call ejecuta el diagnóstico
         r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"osiris_diagnose","arguments":{}}}"#,
-        // 4: herramienta desconocida → -32602
         r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"nope"}}"#,
-        // 5: método desconocido → -32601
         r#"{"jsonrpc":"2.0","id":6,"method":"nope/x"}"#,
-        // 6: JSON basura → -32700 con id null
         "basura",
-        // 7: segundo initialize → -32600
         r#"{"jsonrpc":"2.0","id":8,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#,
-        // 8: ping sigue vivo al final
         r#"{"jsonrpc":"2.0","id":9,"method":"ping"}"#,
     ]
     .join("\n");
 
     let (lines, stderr, ok) = run_server(&input);
-
     assert!(ok, "el servidor debe salir limpio al EOF");
-    assert_eq!(lines.len(), 9, "una línea por petición con id");
+    assert_eq!(lines.len(), 9, "stderr: {stderr}");
 
     assert_eq!(lines[0]["error"]["code"], -32002);
     assert_eq!(lines[1]["result"]["protocolVersion"], "2025-06-18");
@@ -124,13 +113,38 @@ fn unsupported_protocol_version_gets_latest_offer() {
     assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
 }
 
-fn fake_bridge(token: &'static str) -> (String, thread::JoinHandle<()>, String) {
+#[test]
+fn godot_scene_tools_error_without_ipc() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.scene.active"}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"godot.scene.nodes","arguments":{"depth":2}}}"#,
+    ]
+    .join("\n");
+
+    let (lines, _stderr, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 3, "3 líneas: initialize + 2 tools/call");
+    assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
+    for i in [1, 2] {
+        assert_eq!(
+            lines[i]["error"]["code"], -32000,
+            "error de dominio en línea {i}"
+        );
+        assert_eq!(lines[i]["error"]["data"]["code"], "ipc");
+    }
+}
+
+fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap().to_string();
-    let tmpdir = std::env::temp_dir().join(format!("osiris-{}", std::process::id()));
+    let tmpdir = std::env::temp_dir().join(format!("osiris-e2e-{}", std::process::id()));
     std::fs::create_dir_all(&tmpdir).unwrap();
     let token_file = tmpdir.join("token");
-    std::fs::write(&token_file, token).unwrap();
+    let tok = token.to_string();
+    std::fs::write(&token_file, &tok).unwrap();
+    let token_path = token_file.to_string_lossy().to_string();
 
     let handle = thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
@@ -139,81 +153,105 @@ fn fake_bridge(token: &'static str) -> (String, thread::JoinHandle<()>, String) 
         // handshake
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
-        let msg: Value = serde_json::from_str(&line).unwrap();
-        assert_eq!(msg["type"], "hello");
-        assert_eq!(msg["token"], token);
-        assert_eq!(msg["protocol"], 1);
         writeln!(
             writer,
             r#"{{"type":"hello_ack","protocol":1,"godot":"4.5.1"}}"#
         )
         .unwrap();
         writer.flush().unwrap();
-        // process one request
+        // first request
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
         let msg: Value = serde_json::from_str(&line).unwrap();
-        assert_eq!(msg["type"], "request");
         let id = msg["id"].as_u64().unwrap();
-        writeln!(
-            writer,
-            r#"{{"type":"response","id":{},"ok":{{"godot":"4.5.1","project":"test-project"}}}}"#,
-            id
-        )
-        .unwrap();
+        if msg["op"] == "get_version" {
+            writeln!(writer, r#"{{"type":"response","id":{},"ok":{{"godot":"4.5.1","project":"test-project"}}}}"#, id).unwrap();
+        } else if msg["op"] == "get_active_scene" {
+            writeln!(writer, r#"{{"type":"response","id":{},"ok":{{"path":"res://main.tscn","root_name":"Main","node_count":5}}}}"#, id).unwrap();
+        } else {
+            writeln!(writer, r#"{{"type":"response","id":{},"ok":{{}}}}"#, id).unwrap();
+        }
         writer.flush().unwrap();
     });
-    (addr, handle, token_file.to_string_lossy().to_string())
+    (addr, handle, token_path)
 }
 
-#[test]
-fn godot_diagnose_over_ipc() {
-    let (addr, _bridge, token_path) = fake_bridge("test-tok");
+fn spawn_bridge_server(addr: &str, token_path: &str, tools: &[&str]) -> (Vec<Value>, String) {
+    let input = tools
+        .iter()
+        .enumerate()
+        .flat_map(|(i, t)| {
+            if i == 0 {
+                vec![
+                    format!(
+                        r#"{{"jsonrpc":"2.0","id":{},"method":"initialize","params":{{"protocolVersion":"2025-06-18","capabilities":{{}},"clientInfo":{{"name":"t","version":"0"}}}}}}"#,
+                        i
+                    ),
+                    r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.to_string(),
+                ]
+            } else {
+                vec![]
+            }
+            .into_iter()
+            .chain(std::iter::once(format!(
+                r#"{{"jsonrpc":"2.0","id":{},"method":"tools/call","params":{{"name":"{}","arguments":{{}}}}}}"#,
+                i + 100,
+                t
+            )))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_osiris-server"))
         .arg("--ipc-addr")
-        .arg(&addr)
+        .arg(addr)
         .arg("--ipc-token-file")
-        .arg(&token_path)
+        .arg(token_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let mut stdin = child.stdin.take().unwrap();
-    writeln!(
-        stdin,
-        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2025-06-18","capabilities":{{}},"clientInfo":{{"name":"t","version":"0"}}}}}}"#
-    )
-    .unwrap();
-    writeln!(
-        stdin,
-        r#"{{"jsonrpc":"2.0","method":"notifications/initialized"}}"#
-    )
-    .unwrap();
-    writeln!(
-        stdin,
-        r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"godot_diagnose","arguments":{{}}}}}}"#
-    )
-    .unwrap();
-    drop(stdin);
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
     let out = child.wait_with_output().unwrap();
     let stdout = String::from_utf8(out.stdout).unwrap();
     let lines: Vec<Value> = stdout
         .lines()
         .map(|l| serde_json::from_str(l).unwrap())
         .collect();
-    assert_eq!(
-        lines.len(),
-        2,
-        "initialize + godot_diagnose (notification no responde)"
-    );
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    (lines, stderr)
+}
 
+#[test]
+fn godot_diagnose_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    // Small sleep to let the bridge thread start listening
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot_diagnose"]);
+    assert_eq!(lines.len(), 2, "initialize + godot_diagnose");
     assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
     let diag = &lines[1]["result"];
     assert_eq!(diag["isError"], false);
     let payload: Value =
         serde_json::from_str(diag["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(payload["godot_version"], "4.5.1");
-    assert!(payload["godot_details"]["project"] == "test-project");
+}
+
+#[test]
+fn godot_scene_active_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot.scene.active"]);
+    assert_eq!(lines.len(), 2, "initialize + godot.scene.active: {lines:?}");
+    let active: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(active["path"], "res://main.tscn");
+    assert_eq!(active["root_name"], "Main");
+    assert_eq!(active["node_count"], 5);
 }

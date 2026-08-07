@@ -11,8 +11,9 @@ var _peers: Array = []
 var _peer_buffers: Dictionary = {}
 var _busy: bool = false
 var _token: String = ""
+var _editor: EditorInterface = null
 
-func start(addr: String, port: int) -> void:
+func start(addr: String, port: int, editor: EditorInterface) -> void:
 	_tcp = TCPServer.new()
 	if _tcp.listen(port, addr) != OK:
 		push_error("[OsirisBridge] no se puede escuchar en %s:%d" % [addr, port])
@@ -20,6 +21,7 @@ func start(addr: String, port: int) -> void:
 		return
 	_token = _generate_token()
 	_write_token()
+	_editor = editor
 	print_rich("[OsirisBridge] escuchando en %s:%d" % [addr, port])
 
 func stop() -> void:
@@ -36,12 +38,15 @@ func poll() -> void:
 		return
 	_busy = true
 	_accept()
+	var to_remove := []
 	for p: StreamPeerTCP in _peers:
 		if p.get_status() != StreamPeerTCP.STATUS_CONNECTED:
-			_peers.erase(p)
-			_peer_buffers.erase(p)
+			to_remove.append(p)
 		else:
 			_process_peer(p)
+	for p in to_remove:
+		_peers.erase(p)
+		_peer_buffers.erase(p)
 	_busy = false
 
 func _accept() -> void:
@@ -52,9 +57,9 @@ func _accept() -> void:
 
 func _process_peer(peer: StreamPeerTCP) -> void:
 	var buf: String = _peer_buffers.get(peer, "")
-	var chunk := peer.get_utf8_string(peer.get_available_bytes())
-	if chunk:
-		buf += chunk
+	var avail := peer.get_available_bytes()
+	if avail > 0:
+		buf += peer.get_utf8_string(avail)
 
 	var newline := buf.find("\n")
 	if newline < 0:
@@ -116,6 +121,10 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _ok(id, {"pong": true})
 		"get_version":
 			return _get_version(id)
+		"get_active_scene":
+			return _get_active_scene(id)
+		"list_nodes":
+			return _list_nodes(id, msg.get("params", {}))
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -126,6 +135,56 @@ func _get_version(id: Variant) -> Dictionary:
 		"project": ProjectSettings.get_setting("application/config/name", ""),
 	}
 	return _ok(id, info)
+
+func _get_active_scene(id: Variant) -> Dictionary:
+	var root := _editor.get_edited_scene_root()
+	if not root:
+		return _error(id, "godot", "no hay escena activa")
+	return _ok(id, {
+		"path": root.scene_file_path,
+		"root_name": root.name,
+		"node_count": _count_nodes(root),
+	})
+
+func _list_nodes(id: Variant, params: Dictionary) -> Dictionary:
+	var root := _editor.get_edited_scene_root()
+	if not root:
+		return _error(id, "godot", "no hay escena activa")
+	var start_path: String = params.get("path", ".")
+	var start := root
+	if start_path != ".":
+		start = root.get_node_or_null(NodePath(start_path))
+		if not start:
+			return _error(id, "validation", "ruta no encontrada: %s" % start_path)
+	var depth: int = clampi(params.get("depth", 3), 0, 20)
+	var max_total: int = clampi(params.get("max_total", 500), 1, 2000)
+	var items: Array = []
+	var has_more := _collect_nodes(start, depth, items, max_total)
+	return _ok(id, {
+		"items": items,
+		"has_more": has_more,
+	})
+
+func _count_nodes(node: Node) -> int:
+	var n := 1
+	for c in node.get_children():
+		n += _count_nodes(c)
+	return n
+
+func _collect_nodes(node: Node, max_depth: int, items: Array, max_total: int, depth: int = 0) -> bool:
+	for child: Node in node.get_children():
+		if items.size() >= max_total:
+			return true
+		items.append({
+			"name": child.name,
+			"type": child.get_class(),
+			"child_count": child.get_child_count(),
+			"depth": depth + 1,
+		})
+		if depth + 1 < max_depth:
+			if _collect_nodes(child, max_depth, items, max_total, depth + 1):
+				return true
+	return false
 
 func _ok(id: Variant, payload: Variant) -> Dictionary:
 	return {"type": "response", "id": id, "ok": payload}
