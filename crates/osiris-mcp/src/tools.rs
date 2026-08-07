@@ -106,6 +106,16 @@ pub fn list() -> Value {
                     },
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "godot.editor.errors",
+                "title": "Errores del editor",
+                "description": "Lista los errores y advertencias del editor. Godot 4 no expone API pública; el listado estará vacío hasta que la API exista.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                }
             }
         ]
     })
@@ -127,7 +137,8 @@ pub fn call(params: &Value, ipc: Option<&mut IpcClient>) -> Result<Value, RpcErr
         | "godot.scene.active"
         | "godot.scene.nodes"
         | "godot.scene.properties"
-        | "godot.scene.resources" => {
+        | "godot.scene.resources"
+        | "godot.editor.errors" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc).map_err(|e| RpcError::from_domain(&e))
         }
@@ -157,6 +168,7 @@ mod tests {
         assert!(names.contains(&"godot.scene.nodes"));
         assert!(names.contains(&"godot.scene.properties"));
         assert!(names.contains(&"godot.scene.resources"));
+        assert!(names.contains(&"godot.editor.errors"));
     }
 
     #[test]
