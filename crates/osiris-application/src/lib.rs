@@ -29,6 +29,7 @@ pub fn handle_tool(
         "godot.scene.nodes" => ipc_tool(ipc, "list_nodes", params.clone(), plain_result()),
         "godot.scene.properties" => ipc_tool(ipc, "get_property", params.clone(), plain_result()),
         "godot.scene.resources" => ipc_tool(ipc, "list_resources", params.clone(), plain_result()),
+        "godot.editor.errors" => ipc_tool(ipc, "get_editor_errors", Value::Null, plain_result()),
         _ => Err(DomainError::Validation(format!(
             "herramienta desconocida: {name}"
         ))),

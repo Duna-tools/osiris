@@ -129,6 +129,8 @@ func _request(msg: Dictionary) -> Dictionary:
 \t\t\treturn _get_property(id, msg.get("params", {}))
 \t\t"list_resources":
 \t\t\treturn _list_resources(id, msg.get("params", {}))
+\t\t"get_editor_errors":
+\t\t\treturn _get_editor_errors(id)
 \t\t_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -271,6 +273,10 @@ func _variant_to_json(v: Variant, depth: int = 4) -> Variant:
 		TYPE_TRANSFORM3D: return {"basis": _variant_to_json(v.basis, 1), "origin": _variant_to_json(v.origin, 1)}
 		TYPE_PROJECTION: return {"x": _variant_to_json(v.x, 1), "y": _variant_to_json(v.y, 1), "z": _variant_to_json(v.z, 1), "w": _variant_to_json(v.w, 1)}
 		_: return str(v)
+
+func _get_editor_errors(id: Variant) -> Dictionary:
+	# Godot 4 no expone API pública para leer los errores del editor.
+	return _ok(id, {"errors": [], "note": "Godot no expone errores del editor por API; el listado estará vacío hasta que la API exista"})
 
 func _generate_token() -> String:
 	var bytes := PackedByteArray()

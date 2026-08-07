@@ -170,6 +170,13 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
             writeln!(writer, r#"{{"type":"response","id":{},"ok":{{"path":"res://main.tscn","root_name":"Main","node_count":5}}}}"#, id).unwrap();
         } else if msg["op"] == "get_property" {
             writeln!(writer, r#"{{"type":"response","id":{},"ok":{{"path":".","property":"position","value":{{"x":1.5,"y":2.0}}}}}}"#, id).unwrap();
+        } else if msg["op"] == "get_editor_errors" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{},"ok":{{"errors":[]}}}}"#,
+                id
+            )
+            .unwrap();
         } else {
             writeln!(writer, r#"{{"type":"response","id":{},"ok":{{}}}}"#, id).unwrap();
         }
@@ -288,4 +295,27 @@ fn godot_property_over_ipc() {
     assert_eq!(val["property"], "position");
     assert_eq!(val["value"]["x"], 1.5);
     assert_eq!(val["value"]["y"], 2.0);
+}
+
+#[test]
+fn godot_editor_errors_tools_with_and_without_ipc() {
+    // sin IPC: error
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.editor.errors"}}"#,
+    ].join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+
+    // con IPC: resultado
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.editor.errors"]);
+    assert_eq!(lines.len(), 2);
+    let val: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(val["errors"].as_array().unwrap().len(), 0);
 }
