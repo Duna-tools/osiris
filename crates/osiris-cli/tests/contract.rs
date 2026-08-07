@@ -4,8 +4,10 @@
 //! Cubre: ciclo de vida, handshake, framing por líneas, pureza de stdout
 //! (solo JSON-RPC), logs a stderr, límites de tamaño y herramientas.
 
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpListener;
 use std::process::{Command, Stdio};
+use std::thread;
 
 use serde_json::{Value, json};
 
@@ -120,4 +122,98 @@ fn unsupported_protocol_version_gets_latest_offer() {
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1999-01-01"}}"#,
     );
     assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
+}
+
+fn fake_bridge(token: &'static str) -> (String, thread::JoinHandle<()>, String) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let tmpdir = std::env::temp_dir().join(format!("osiris-{}", std::process::id()));
+    std::fs::create_dir_all(&tmpdir).unwrap();
+    let token_file = tmpdir.join("token");
+    std::fs::write(&token_file, token).unwrap();
+
+    let handle = thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut writer = stream;
+        // handshake
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let msg: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(msg["type"], "hello");
+        assert_eq!(msg["token"], token);
+        assert_eq!(msg["protocol"], 1);
+        writeln!(
+            writer,
+            r#"{{"type":"hello_ack","protocol":1,"godot":"4.5.1"}}"#
+        )
+        .unwrap();
+        writer.flush().unwrap();
+        // process one request
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let msg: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(msg["type"], "request");
+        let id = msg["id"].as_u64().unwrap();
+        writeln!(
+            writer,
+            r#"{{"type":"response","id":{},"ok":{{"godot":"4.5.1","project":"test-project"}}}}"#,
+            id
+        )
+        .unwrap();
+        writer.flush().unwrap();
+    });
+    (addr, handle, token_file.to_string_lossy().to_string())
+}
+
+#[test]
+fn godot_diagnose_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("test-tok");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_osiris-server"))
+        .arg("--ipc-addr")
+        .arg(&addr)
+        .arg("--ipc-token-file")
+        .arg(&token_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    writeln!(
+        stdin,
+        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2025-06-18","capabilities":{{}},"clientInfo":{{"name":"t","version":"0"}}}}}}"#
+    )
+    .unwrap();
+    writeln!(
+        stdin,
+        r#"{{"jsonrpc":"2.0","method":"notifications/initialized"}}"#
+    )
+    .unwrap();
+    writeln!(
+        stdin,
+        r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"godot_diagnose","arguments":{{}}}}}}"#
+    )
+    .unwrap();
+    drop(stdin);
+    let out = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let lines: Vec<Value> = stdout
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(
+        lines.len(),
+        2,
+        "initialize + godot_diagnose (notification no responde)"
+    );
+
+    assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
+    let diag = &lines[1]["result"];
+    assert_eq!(diag["isError"], false);
+    let payload: Value =
+        serde_json::from_str(diag["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(payload["godot_version"], "4.5.1");
+    assert!(payload["godot_details"]["project"] == "test-project");
 }

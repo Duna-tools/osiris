@@ -15,6 +15,8 @@ const DEFAULT_LOG_LEVEL: &str = "info";
 pub struct Config {
     pub bind_addr: String,
     pub log_level: String,
+    pub ipc_addr: Option<String>,
+    pub ipc_token_file: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -22,6 +24,8 @@ pub struct Config {
 struct FileConfig {
     bind_addr: Option<String>,
     log_level: Option<String>,
+    ipc_addr: Option<String>,
+    ipc_token_file: Option<String>,
 }
 
 /// Argumentos CLI ya parseados (todos opcionales salvo `--help`).
@@ -30,6 +34,8 @@ pub struct CliArgs {
     pub config_path: Option<String>,
     pub bind_addr: Option<String>,
     pub log_level: Option<String>,
+    pub ipc_addr: Option<String>,
+    pub ipc_token_file: Option<String>,
     pub help: bool,
 }
 
@@ -37,10 +43,12 @@ pub struct CliArgs {
 pub const USAGE: &str = "Uso: osiris-server [opciones]
 
 Opciones:
-  --config <ruta>     Archivo TOML de configuración (o OSIRIS_CONFIG)
-  --bind <addr>       Dirección de escucha (o OSIRIS_BIND_ADDR) [defecto: 127.0.0.1:3000]
-  --log-level <nivel> Nivel de log (o OSIRIS_LOG_LEVEL) [defecto: info]
-  -h, --help          Muestra esta ayuda";
+  --config <ruta>       Archivo TOML de configuración (o OSIRIS_CONFIG)
+  --bind <addr>         Dirección de escucha (o OSIRIS_BIND_ADDR) [defecto: 127.0.0.1:3000]
+  --log-level <nivel>   Nivel de log (o OSIRIS_LOG_LEVEL) [defecto: info]
+  --ipc-addr <addr>     Dirección del puente Godot (o OSIRIS_IPC_ADDR)
+  --ipc-token-file <f>  Archivo con el token del puente (o OSIRIS_IPC_TOKEN_FILE)
+  -h, --help            Muestra esta ayuda";
 
 /// Parsea argumentos ya separados (sin el nombre del programa).
 ///
@@ -54,7 +62,7 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
         let flag = args[i].as_str();
         match flag {
             "-h" | "--help" => out.help = true,
-            "--config" | "--bind" | "--log-level" => {
+            "--config" | "--bind" | "--log-level" | "--ipc-addr" | "--ipc-token-file" => {
                 let value = args
                     .get(i + 1)
                     .ok_or_else(|| format!("{flag} requiere un valor"))?
@@ -62,6 +70,8 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 match flag {
                     "--config" => out.config_path = Some(value),
                     "--bind" => out.bind_addr = Some(value),
+                    "--ipc-addr" => out.ipc_addr = Some(value),
+                    "--ipc-token-file" => out.ipc_token_file = Some(value),
                     _ => out.log_level = Some(value),
                 }
                 i += 1;
@@ -84,6 +94,8 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
     let mut cfg = Config {
         bind_addr: DEFAULT_BIND_ADDR.to_string(),
         log_level: DEFAULT_LOG_LEVEL.to_string(),
+        ipc_addr: None,
+        ipc_token_file: None,
     };
 
     let config_path = args.config_path.clone().or_else(|| env("OSIRIS_CONFIG"));
@@ -98,6 +110,12 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
         if let Some(v) = file.log_level {
             cfg.log_level = v;
         }
+        if cfg.ipc_addr.is_none() {
+            cfg.ipc_addr = file.ipc_addr;
+        }
+        if cfg.ipc_token_file.is_none() {
+            cfg.ipc_token_file = file.ipc_token_file;
+        }
     }
 
     if let Some(v) = env("OSIRIS_BIND_ADDR") {
@@ -106,12 +124,24 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
     if let Some(v) = env("OSIRIS_LOG_LEVEL") {
         cfg.log_level = v;
     }
+    if let Some(v) = env("OSIRIS_IPC_ADDR") {
+        cfg.ipc_addr = Some(v);
+    }
+    if let Some(v) = env("OSIRIS_IPC_TOKEN_FILE") {
+        cfg.ipc_token_file = Some(v);
+    }
 
     if let Some(v) = &args.bind_addr {
         cfg.bind_addr = v.clone();
     }
     if let Some(v) = &args.log_level {
         cfg.log_level = v.clone();
+    }
+    if let Some(v) = &args.ipc_addr {
+        cfg.ipc_addr = Some(v.clone());
+    }
+    if let Some(v) = &args.ipc_token_file {
+        cfg.ipc_token_file = Some(v.clone());
     }
 
     Ok(cfg)
