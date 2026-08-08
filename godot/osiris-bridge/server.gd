@@ -145,6 +145,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _stop_project(id)
 		"get_run_status":
 			return _get_run_status(id)
+		"assert_property":
+			return _assert_property(id, msg.get("params", {}))
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -395,6 +397,18 @@ func _stop_project(id: Variant) -> Dictionary:
 
 func _get_run_status(id: Variant) -> Dictionary:
 	return _ok(id, {"running": _editor.is_playing_scene()})
+
+func _assert_property(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var prop: String = params.get("property", "")
+	if prop == "":
+		return _error(id, "validation", "propiedad requerida")
+	var actual: Variant = node.get(prop)
+	var expected: Variant = params.get("expected")
+	var match_val: bool = str(actual) == str(expected)
+	return _ok(id, {"match": match_val, "actual": _variant_to_json(actual), "expected": expected})
 
 func _generate_token() -> String:
 	var bytes: PackedByteArray = PackedByteArray()

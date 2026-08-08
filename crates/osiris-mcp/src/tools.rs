@@ -127,6 +127,21 @@ fn all_tools() -> Vec<Value> {
             "description": "Devuelve si el proyecto está en ejecución. Solo lectura.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
+        json!({
+            "name": "godot.assert.property",
+            "title": "Verificar propiedad",
+            "description": "Compara el valor de una propiedad con un esperado. Devuelve match (bool) y el valor real.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath." },
+                    "property": { "type": "string", "description": "Nombre de la propiedad." },
+                    "expected": { "description": "Valor esperado." }
+                },
+                "required": ["property"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -159,7 +174,8 @@ pub fn call(
         | "godot.scene.save"
         | "godot.run"
         | "godot.stop"
-        | "godot.run.status" => {
+        | "godot.run.status"
+        | "godot.assert.property" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

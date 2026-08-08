@@ -124,6 +124,7 @@ fn execute_tool(
         "godot.run" => ipc_tool(ipc, "run_project", Value::Null, plain_result()),
         "godot.stop" => ipc_tool(ipc, "stop_project", Value::Null, plain_result()),
         "godot.run.status" => ipc_tool(ipc, "get_run_status", Value::Null, plain_result()),
+        "godot.assert.property" => ipc_tool(ipc, "assert_property", params.clone(), plain_result()),
         _ => Err(DomainError::Validation(format!(
             "herramienta desconocida: {name}"
         ))),
