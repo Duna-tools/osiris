@@ -15,6 +15,11 @@ members = [
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "MCP server for Godot project inspection, modification and execution"
+repository = "https://github.com/luke/osiris"
+readme = "README.md"
+keywords = ["godot", "mcp", "game-dev", "editor"]
+categories = ["development-tools", "game-engines"]
 
 [workspace.dependencies]
 osiris-domain = { path = "crates/osiris-domain" }
