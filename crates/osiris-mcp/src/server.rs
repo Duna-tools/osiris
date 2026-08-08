@@ -19,6 +19,7 @@ use osiris_domain::DomainError;
 use serde_json::{Value, json};
 
 use crate::jsonrpc::{INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, Request, Response, RpcError};
+use osiris_application::IdempotencyCache;
 use osiris_ipc_client::IpcClient;
 use osiris_policy::Profile;
 
@@ -43,6 +44,7 @@ pub struct Server {
     initialized: bool,
     pub ipc: Option<IpcClient>,
     pub profile: Profile,
+    cache: IdempotencyCache,
 }
 
 impl Server {
@@ -51,6 +53,7 @@ impl Server {
             initialized: false,
             ipc,
             profile,
+            cache: IdempotencyCache::new(),
         }
     }
 
@@ -88,7 +91,12 @@ impl Server {
             )),
             "tools/list" => Some(Response::ok(id, crate::tools::list(self.profile))),
             "tools/call" => Some(
-                match crate::tools::call(&request.params, self.ipc.as_mut(), self.profile) {
+                match crate::tools::call(
+                    &request.params,
+                    self.ipc.as_mut(),
+                    self.profile,
+                    &mut self.cache,
+                ) {
                     Ok(result) => Response::ok(id, result),
                     Err(e) => Response::err(id, e),
                 },

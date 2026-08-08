@@ -376,3 +376,21 @@ fn write_tools_work_with_edit_profile() {
     assert_eq!(create["path"], "./Sprite");
     assert_eq!(create["type"], "Node2D");
 }
+
+#[test]
+fn cache_reuses_read_results() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _stderr) = spawn_bridge_server(
+        &addr,
+        &token_path,
+        &["godot_diagnose", "godot_diagnose"],
+        "read",
+    );
+    assert_eq!(lines.len(), 3, "initialize + 2 godot_diagnose: {lines:?}");
+    assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
+    // Ambas respuestas deben ser OK (la segunda desde cache, sin IPC)
+    for i in [1, 2] {
+        assert_eq!(lines[i]["result"]["isError"], false);
+    }
+}

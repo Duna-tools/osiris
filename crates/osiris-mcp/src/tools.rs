@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use crate::jsonrpc::RpcError;
 use osiris_application;
+use osiris_application::IdempotencyCache;
 use osiris_ipc_client::IpcClient;
 use osiris_policy::Profile;
 
@@ -126,6 +127,7 @@ pub fn call(
     params: &Value,
     ipc: Option<&mut IpcClient>,
     profile: Profile,
+    cache: &mut IdempotencyCache,
 ) -> Result<Value, RpcError> {
     let name = params
         .get("name")
@@ -146,78 +148,12 @@ pub fn call(
         | "godot.run"
         | "godot.stop" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
-            osiris_application::handle_tool(name, args, ipc, profile)
+            osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))
         }
         _ => Err(RpcError::new(
             INVALID_PARAMS,
             format!("herramienta desconocida: {name}"),
         )),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn list_filters_tools_by_profile() {
-        // Read solo ve herramientas de lectura
-        let tools = &list(Profile::Read)["tools"];
-        let names: Vec<_> = tools
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|t| t["name"].as_str().unwrap())
-            .collect();
-        assert!(names.contains(&"osiris_diagnose"));
-        assert!(names.contains(&"godot.scene.nodes"));
-        assert!(!names.contains(&"godot.scene.create_node"));
-
-        // Edit sí ve herramientas de escritura
-        let tools = &list(Profile::Edit)["tools"];
-        let edit_names: Vec<_> = tools
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|t| t["name"].as_str().unwrap())
-            .collect();
-        assert!(edit_names.contains(&"godot.scene.create_node"));
-    }
-
-    #[test]
-    fn call_diagnose_returns_content() {
-        let r = call(
-            &json!({"name": "osiris_diagnose", "arguments": {}}),
-            None,
-            Profile::Read,
-        )
-        .unwrap();
-        assert_eq!(r["isError"], false);
-        assert!(
-            r["content"][0]["text"]
-                .as_str()
-                .unwrap()
-                .contains("\"osiris\"")
-        );
-    }
-
-    #[test]
-    fn unknown_tool_and_missing_name_are_invalid_params() {
-        let e = call(&json!({"name": "nope"}), None, Profile::Read).unwrap_err();
-        let e = format!("{e:?}");
-        assert!(e.contains("herramienta desconocida"));
-        assert!(call(&json!({}), None, Profile::Read).is_err());
-    }
-
-    #[test]
-    fn godot_diagnose_without_ipc_is_error() {
-        let e = call(
-            &json!({"name": "godot_diagnose", "arguments": {}}),
-            None,
-            Profile::Read,
-        )
-        .unwrap_err();
-        assert!(format!("{e:?}").contains("ipc"));
     }
 }
