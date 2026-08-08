@@ -104,6 +104,7 @@ func _hello(msg: Dictionary) -> Dictionary:
 	if pversion != PROTOCOL_VERSION:
 		return _hello_err("compatibility", "protocolo %d, se espera %d" % [pversion, PROTOCOL_VERSION])
 	var tok: String = msg.get("token", "")
+	# Comparación simple de strings local: defensa de proceso, no criptográfica (FND-008).
 	if tok != _token:
 		return _hello_err("authentication", "token inválido")
 	var vi: Dictionary = Engine.get_version_info()
@@ -215,35 +216,23 @@ func _error(id: Variant, code: String, message: String, retryable: bool = false)
 	return {"type": "response", "id": id if id != null else null, "error": {"code": code, "message": message, "retryable": retryable}}
 
 func _get_property(id: Variant, params: Dictionary) -> Dictionary:
-	var root: Node = _editor.get_edited_scene_root()
-	if not root:
-		return _error(id, "godot", "no hay escena activa")
-	var node_path: String = params.get("path", ".")
-	var node: Node = root
-	if node_path != ".":
-		node = root.get_node_or_null(NodePath(node_path))
+	var node: Node = _resolve_node(params)
 	if not node:
-		return _error(id, "godot", "nodo no encontrado: %s" % node_path)
+		return _error(id, "godot", "nodo no encontrado")
 	var prop: String = params.get("property", "")
 	if prop == "":
 		return _error(id, "validation", "parámetro 'property' requerido")
 	var value: Variant = node.get(prop)
 	return _ok(id, {
-		"path": node_path,
+		"path": params.get("path", "."),
 		"property": prop,
 		"value": _variant_to_json(value),
 	})
 
 func _list_resources(id: Variant, params: Dictionary) -> Dictionary:
-	var root: Node = _editor.get_edited_scene_root()
-	if not root:
-		return _error(id, "godot", "no hay escena activa")
-	var node_path: String = params.get("path", ".")
-	var node: Node = root
-	if node_path != ".":
-		node = root.get_node_or_null(NodePath(node_path))
+	var node: Node = _resolve_node(params)
 	if not node:
-		return _error(id, "godot", "nodo no encontrado: %s" % node_path)
+		return _error(id, "godot", "nodo no encontrado")
 	var resources: Array = []
 	for prop: Dictionary in node.get_property_list():
 		if prop.type == TYPE_OBJECT and (prop.usage & PROPERTY_USAGE_STORAGE):
@@ -306,6 +295,7 @@ func _create_node(id: Variant, params: Dictionary) -> Dictionary:
 	var parent: Node = _resolve_node(params)
 	if not parent:
 		return _error(id, "godot", "nodo padre no encontrado")
+	var raw_path: String = params.get("path", ".")
 	var node_type: String = params.get("type", "")
 	if node_type == "":
 		return _error(id, "validation", "parámetro 'type' requerido")
@@ -316,8 +306,7 @@ func _create_node(id: Variant, params: Dictionary) -> Dictionary:
 	new_node.name = node_name if node_name else node_type
 	parent.add_child(new_node, true)
 	new_node.set_owner(_editor.get_edited_scene_root())
-	var node_path: String = params.get("path", ".")
-	return _ok(id, {"path": "%s/%s" % [node_path, new_node.name], "type": node_type, "name": new_node.name})
+	return _ok(id, {"path": "%s/%s" % [raw_path, new_node.name], "type": node_type, "name": new_node.name})
 
 func _remove_node(id: Variant, params: Dictionary) -> Dictionary:
 	var node: Node = _resolve_node(params)
@@ -342,6 +331,9 @@ func _set_property(id: Variant, params: Dictionary) -> Dictionary:
 	return _ok(id, {"property": prop, "value": _variant_to_json(node.get(prop))})
 
 func _json_to_variant(v: Variant) -> Variant:
+	# Coercer por heurística: dicts con keys {x,y} → Vector2, {x,y,z} → Vector3,
+	# {x,y,z,w} → Quaternion. Riesgo: un dict no-vector con esas keys se coercerá
+	# incorrectamente a vector. Si necesitas forzar tipo, pasa type_hint en params (FND-009).
 	if v == null: return null
 	var t: int = typeof(v)
 	if t == TYPE_BOOL or t == TYPE_INT or t == TYPE_FLOAT or t == TYPE_STRING:

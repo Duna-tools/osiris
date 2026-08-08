@@ -1,8 +1,8 @@
-//! CLI: punto de entrada del binario osiris-server (deployment-model.md).
+//! CLI: binario `osiris-server` (deployment-model.md).
 //!
-//! Por ahora: parsea argumentos, resuelve la configuración con la precedencia
-//! documentada y muestra la configuración efectiva. El servidor MCP se
-//! conectará en fases posteriores (roadmap Fase B).
+//! Servidor MCP sobre stdio con puente IPC opcional a Godot.
+//! Arranque: parsear args, resolver configuración, telemetría, conectar puente,
+//! iniciar bucle MCP.
 
 mod config;
 

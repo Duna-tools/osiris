@@ -1,6 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use osiris_ipc_client::IpcClient;
-use osiris_ipc_contract::{BridgeMessage, ClientMessage};
 use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
