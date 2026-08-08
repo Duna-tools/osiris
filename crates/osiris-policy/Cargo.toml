@@ -11,3 +11,4 @@ categories.workspace = true
 
 [dependencies]
 osiris-domain = { workspace = true }
+tracing.workspace = true

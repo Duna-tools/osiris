@@ -80,6 +80,7 @@ impl Server {
             return None;
         }
         let id = request.id.clone()?;
+        tracing::debug!(req_id = %id, method = %request.method, "solicitud recibida");
         match request.method.as_str() {
             "initialize" => Some(self.handle_initialize(id, request)),
             // El spec MCP permite pings antes de completar la inicialización.
@@ -92,6 +93,7 @@ impl Server {
                 ),
             )),
             "tools/list" => Some(Response::ok(id, crate::tools::list(self.profile))),
+            "health" => Some(self.handle_health(id)),
             "tools/call" => Some(
                 match crate::tools::call(
                     &request.params,
@@ -108,6 +110,18 @@ impl Server {
                 RpcError::new(METHOD_NOT_FOUND, "method not found"),
             )),
         }
+    }
+
+    fn handle_health(&self, id: Value) -> Response {
+        Response::ok(
+            id,
+            json!({
+                "ok": true,
+                "version": env!("CARGO_PKG_VERSION"),
+                "profile": format!("{:?}", self.profile).to_lowercase(),
+                "godot_connected": self.ipc.is_some(),
+            }),
+        )
     }
 
     fn handle_initialize(&mut self, id: Value, request: &Request) -> Response {
