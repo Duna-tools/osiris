@@ -149,10 +149,10 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
     }
 
     if let Some(v) = &args.bind_addr {
-        cfg.bind_addr = v.clone();
+        cfg.bind_addr.clone_from(v);
     }
     if let Some(v) = &args.log_level {
-        cfg.log_level = v.clone();
+        cfg.log_level.clone_from(v);
     }
     if let Some(v) = &args.ipc_addr {
         cfg.ipc_addr = Some(v.clone());
@@ -178,7 +178,13 @@ mod tests {
     }
 
     fn args(list: &[&str]) -> CliArgs {
-        parse_args(&list.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap()
+        parse_args(
+            &list
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>(),
+        )
+        .unwrap()
     }
 
     #[test]

@@ -56,6 +56,7 @@ impl RpcError {
 
     /// Mapea un error de dominio sin exponer su causa interna: el mensaje es
     /// la categoría estable y el detalle seguro viaja en `data` (FND-004).
+    #[must_use]
     pub fn from_domain(e: &osiris_domain::DomainError) -> Self {
         Self {
             code: DOMAIN_ERROR,
@@ -69,7 +70,8 @@ impl RpcError {
 }
 
 impl Response {
-    pub fn ok(id: Value, result: Value) -> Self {
+    #[must_use]
+    pub const fn ok(id: Value, result: Value) -> Self {
         Self {
             jsonrpc: "2.0",
             id,
@@ -78,7 +80,8 @@ impl Response {
         }
     }
 
-    pub fn err(id: Value, error: RpcError) -> Self {
+    #[must_use]
+    pub const fn err(id: Value, error: RpcError) -> Self {
         Self {
             jsonrpc: "2.0",
             id,
@@ -88,6 +91,7 @@ impl Response {
     }
 
     /// Serializa la respuesta a una línea JSON.
+    #[must_use]
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|_| {
             r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"internal"}}"#

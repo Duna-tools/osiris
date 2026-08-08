@@ -18,12 +18,12 @@ pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
 
 /// Mensajes que envía el núcleo al puente.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
     /// Primer mensaje tras conectar: versión y credencial local.
     Hello { protocol: u32, token: String },
-    /// Orden tipada para el puente (`op`: p. ej. "ping", "get_version").
+    /// Orden tipada para el puente (`op`: p. ej. "ping", "`get_version`").
     Request {
         id: u64,
         op: String,
@@ -35,7 +35,7 @@ pub enum ClientMessage {
 }
 
 /// Mensajes que envía el puente al núcleo.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BridgeMessage {
     /// Handshake aceptado; incluye la versión de Godot del editor.
@@ -53,7 +53,7 @@ pub enum BridgeMessage {
 }
 
 /// Error estructurado del contrato IPC.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IpcError {
     /// Categoría estable (`DomainError.code()`).
     pub code: String,
@@ -72,7 +72,8 @@ impl ClientMessage {
 }
 
 impl BridgeMessage {
-    pub fn ok(id: u64, value: Value) -> Self {
+    #[must_use]
+    pub const fn ok(id: u64, value: Value) -> Self {
         Self::Response {
             id,
             ok: Some(value),
@@ -80,7 +81,8 @@ impl BridgeMessage {
         }
     }
 
-    pub fn err(id: u64, error: IpcError) -> Self {
+    #[must_use]
+    pub const fn err(id: u64, error: IpcError) -> Self {
         Self::Response {
             id,
             ok: None,
@@ -89,17 +91,26 @@ impl BridgeMessage {
     }
 }
 
-/// Serializa un mensaje a su línea NDJSON.
+/// Serializes a message to its NDJSON line.
+///
+/// # Errors
+/// Returns `Err` if serialization fails.
 pub fn encode(msg: &impl Serialize) -> Result<String, serde_json::Error> {
     serde_json::to_string(msg)
 }
 
-/// Parsea una línea NDJSON a mensaje del puente.
+/// Parses an NDJSON line to a bridge message.
+///
+/// # Errors
+/// Returns `Err` if the line is not valid JSON or unknown type.
 pub fn decode_bridge(line: &str) -> Result<BridgeMessage, serde_json::Error> {
     serde_json::from_str(line)
 }
 
-/// Parsea una línea NDJSON a mensaje del núcleo.
+/// Parses an NDJSON line to a client message.
+///
+/// # Errors
+/// Returns `Err` if the line is not valid JSON or unknown type.
 pub fn decode_client(line: &str) -> Result<ClientMessage, serde_json::Error> {
     serde_json::from_str(line)
 }

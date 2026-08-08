@@ -30,8 +30,7 @@ fn bench_handshake_and_call(c: &mut Criterion) {
                 let id = msg["id"].as_u64().unwrap();
                 writeln!(
                     writer,
-                    r#"{{"type":"response","id":{},"ok":{{"pong":true}}}}"#,
-                    id
+                    r#"{{"type":"response","id":{id},"ok":{{"pong":true}}}}"#
                 )
                 .unwrap();
                 writer.flush().unwrap();
@@ -43,7 +42,7 @@ fn bench_handshake_and_call(c: &mut Criterion) {
         b.iter(|| {
             let client = IpcClient::connect(&addr, "tok", Duration::from_secs(1)).unwrap();
             std::hint::black_box(client);
-        })
+        });
     });
 
     c.bench_function("call_roundtrip", |b| {
@@ -51,7 +50,7 @@ fn bench_handshake_and_call(c: &mut Criterion) {
         b.iter(|| {
             let result = client.call("ping", json!({})).unwrap();
             std::hint::black_box(result);
-        })
+        });
     });
 }
 

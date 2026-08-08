@@ -48,6 +48,7 @@ pub struct Server {
 }
 
 impl Server {
+    #[must_use]
     pub fn new(ipc: Option<IpcClient>, profile: Profile) -> Self {
         Self {
             initialized: false,
@@ -143,7 +144,10 @@ impl Server {
     }
 }
 
-/// Bucle principal: lee líneas de stdin y escribe respuestas en stdout hasta EOF.
+/// Main loop: reads stdin lines and writes responses to stdout until EOF.
+///
+/// # Errors
+/// Returns `Err` on I/O error reading stdin or writing stdout.
 pub fn run_server(server: &mut Server) -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout().lock();
@@ -176,7 +180,7 @@ fn parse(line: &str) -> Result<Request, Box<Response>> {
     })?;
     if request.jsonrpc != "2.0" {
         return Err(Box::new(Response::err(
-            request.id.clone().unwrap_or(Value::Null),
+            request.id.unwrap_or(Value::Null),
             RpcError::new(INVALID_REQUEST, "invalid request"),
         )));
     }

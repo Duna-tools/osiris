@@ -11,20 +11,20 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
 
-    let args = match config::parse_args(&argv) {
-        Ok(args) => args,
+    let cli = match config::parse_args(&argv) {
+        Ok(cli) => cli,
         Err(e) => {
             eprintln!("error: {e}\n{}", config::USAGE);
             return ExitCode::from(2);
         }
     };
 
-    if args.help {
+    if cli.help {
         println!("{}", config::USAGE);
         return ExitCode::SUCCESS;
     }
 
-    let cfg = match config::load(&args, |k| std::env::var(k).ok()) {
+    let cfg = match config::load(&cli, |k| std::env::var(k).ok()) {
         Ok(cfg) => cfg,
         Err(e) => {
             eprintln!("error: {e}");

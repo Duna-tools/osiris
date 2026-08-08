@@ -32,6 +32,7 @@ impl Default for IdempotencyCache {
 }
 
 impl IdempotencyCache {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             entries: VecDeque::with_capacity(MAX_CACHE_ENTRIES),
@@ -63,7 +64,10 @@ fn cache_key(tool: &str, params: &Value) -> String {
 
 /// Despacha el `tools/call` hacia la herramienta correcta (local o puente).
 ///
-/// `profile` determina las capacidades del cliente (ADR-005).
+/// `profile` determines the client's capabilities (ADR-005).
+///
+/// # Errors
+/// Returns `Err` if the tool is unauthorized, unknown, or IPC fails.
 pub fn handle_tool(
     name: &str,
     params: &Value,
@@ -83,7 +87,9 @@ pub fn handle_tool(
             | "godot.stop"
     );
 
-    if !is_write {
+    if is_write {
+        execute_tool(name, params, ipc, profile)
+    } else {
         let key = cache_key(name, params);
         if let Some(cached) = cache.get(&key) {
             return Ok(cached.clone());
@@ -91,8 +97,6 @@ pub fn handle_tool(
         let result = execute_tool(name, params, ipc, profile)?;
         cache.put(key, result.clone());
         Ok(result)
-    } else {
-        execute_tool(name, params, ipc, profile)
     }
 }
 
@@ -148,7 +152,10 @@ fn plain_result() -> fn(&IpcClient, &Value) -> Value {
     |_, result| result.clone()
 }
 
-/// Ejecuta una orden en el puente y envuelve el resultado como texto MCP.
+/// Executes an order on the bridge and wraps the result as MCP text.
+///
+/// # Errors
+/// Returns `Err` if IPC is not configured or the bridge call fails.
 fn ipc_tool(
     ipc: Option<&mut IpcClient>,
     op: &str,

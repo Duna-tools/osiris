@@ -17,8 +17,8 @@ use tracing_subscriber::filter::LevelFilter;
 /// cadena como nombre de target, así que los valores simples se validan antes
 /// contra `LevelFilter` para que un typo falle en arranque y no silencie logs.
 ///
-/// # Errores
-/// Devuelve `Err` si la cadena no es un nivel ni una directiva válida.
+/// # Errors
+/// Returns `Err` if the string is not a valid level or directive.
 fn filter(log_level: &str) -> Result<EnvFilter, String> {
     let simple = !log_level.contains(['=', ',']);
     if simple && LevelFilter::from_str(log_level).is_err() {
@@ -36,8 +36,8 @@ fn filter(log_level: &str) -> Result<EnvFilter, String> {
 ///
 /// Debe llamarse una sola vez al arrancar el proceso.
 ///
-/// # Errores
-/// Devuelve `Err` si el nivel es inválido o el suscriptor global ya existe.
+/// # Errors
+/// Returns `Err` if the level is invalid or the global subscriber already exists.
 pub fn init(log_level: &str) -> Result<(), String> {
     let filter = filter(log_level)?;
     tracing_subscriber::fmt()

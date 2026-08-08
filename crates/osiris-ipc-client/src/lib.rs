@@ -36,11 +36,11 @@ impl std::fmt::Debug for IpcClient {
 impl IpcClient {
     /// Conecta al puente, envía `hello` y valida el ack.
     ///
-    /// # Errores
-    /// - `Ipc`: dirección inválida, conexión rechazada o canal roto.
-    /// - `Timeout`: el puente no respondió dentro de `timeout`.
-    /// - `Authentication`: token rechazado.
-    /// - `Compatibility`: versión de protocolo incompatible.
+    /// # Errors
+    /// - `Ipc`: invalid address, connection refused, or broken channel.
+    /// - `Timeout`: bridge did not respond within `timeout`.
+    /// - `Authentication`: token rejected.
+    /// - `Compatibility`: incompatible protocol version.
     pub fn connect(addr: &str, token: &str, timeout: Duration) -> Result<Self, DomainError> {
         let socket = addr
             .to_socket_addrs()
@@ -73,17 +73,17 @@ impl IpcClient {
                 "puente con protocolo {protocol}, este núcleo habla {PROTOCOL_VERSION}"
             ))),
             BridgeMessage::HelloError { code, message } => Err(map_code(&code, &message)),
-            other => Err(DomainError::Ipc(format!(
-                "handshake inesperado del puente: {other:?}"
-            ))),
+            BridgeMessage::Response { .. } => Err(DomainError::Ipc(
+                "respuesta inesperada del puente durante el handshake".to_string(),
+            )),
         }
     }
 
     /// Envía una orden y espera su respuesta (por id). Otras respuestas se
     /// descartan (no hay multiplexación hoy: una solicitud en vuelo).
     ///
-    /// # Errores
-    /// `Timeout`, `Ipc` o el `DomainError` que reporte el puente.
+    /// # Errors
+    /// `Timeout`, `Ipc`, or the `DomainError` reported by the bridge.
     pub fn call(&mut self, op: &str, params: Value) -> Result<Value, DomainError> {
         let id = self.next_id;
         self.next_id += 1;
@@ -100,12 +100,15 @@ impl IpcClient {
                     }
                     return Ok(ok.unwrap_or(Value::Null));
                 }
-                _ => continue, // respuesta de otra id o mensaje fuera de lugar
+                _ => {} // ignore non-matching id responses
             }
         }
     }
 
-    /// Cancelación best-effort (el puente puede no atenderla si ya terminó).
+    /// Best-effort cancellation (the bridge may ignore it if already done).
+    ///
+    /// # Errors
+    /// Returns  if the write to the bridge fails.
     pub fn cancel(&mut self, id: u64) -> Result<(), DomainError> {
         self.send(&ClientMessage::Cancel { id })
     }
@@ -115,12 +118,12 @@ impl IpcClient {
             .map_err(|e| DomainError::Internal(format!("codificar IPC: {e}")))?;
         writeln!(self.writer, "{line}")
             .and_then(|()| self.writer.flush())
-            .map_err(map_io)
+            .map_err(|e| map_io(&e))
     }
 
     fn recv(&mut self) -> Result<BridgeMessage, DomainError> {
         let mut line = String::new();
-        let n = self.reader.read_line(&mut line).map_err(map_io)?;
+        let n = self.reader.read_line(&mut line).map_err(|e| map_io(&e))?;
         if n == 0 {
             return Err(DomainError::Ipc("el puente cerró la conexión".to_string()));
         }
@@ -135,11 +138,11 @@ impl IpcClient {
 }
 
 /// Mapea errores de E/S: los timeouts del socket llegan como WouldBlock/TimedOut.
-fn map_io(e: std::io::Error) -> DomainError {
-    use std::io::ErrorKind::*;
+fn map_io(e: &std::io::Error) -> DomainError {
+    let msg = e.to_string();
     match e.kind() {
-        WouldBlock | TimedOut => DomainError::Timeout(e.to_string()),
-        _ => DomainError::Ipc(e.to_string()),
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => DomainError::Timeout(msg),
+        _ => DomainError::Ipc(msg),
     }
 }
 

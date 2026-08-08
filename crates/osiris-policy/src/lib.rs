@@ -26,15 +26,15 @@ pub enum Profile {
 }
 
 impl Profile {
-    fn mask(&self) -> u8 {
+    const fn mask(self) -> u8 {
         match self {
-            Profile::Read => 0,
-            Profile::Edit => 1 << Capability::GodotSceneWrite as u8,
-            Profile::Admin => 0xFF,
+            Self::Read => 0,
+            Self::Edit => 1 << Capability::GodotSceneWrite as u8,
+            Self::Admin => 0xFF,
         }
     }
 
-    fn has(&self, cap: Capability) -> bool {
+    const fn has(self, cap: Capability) -> bool {
         self.mask() & (1 << cap as u8) != 0
     }
 }
@@ -43,9 +43,9 @@ impl FromStr for Profile {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "read" => Ok(Profile::Read),
-            "edit" => Ok(Profile::Edit),
-            "admin" => Ok(Profile::Admin),
+            "read" => Ok(Self::Read),
+            "edit" => Ok(Self::Edit),
+            "admin" => Ok(Self::Admin),
             other => Err(format!(
                 "perfil desconocido '{other}' (use read|edit|admin)"
             )),
@@ -54,6 +54,7 @@ impl FromStr for Profile {
 }
 
 /// La capacidad que una herramienta necesita, o `None` si es de solo lectura.
+#[must_use]
 pub fn required(tool_name: &str) -> Option<Capability> {
     match tool_name {
         "godot.scene.create_node"
@@ -65,10 +66,10 @@ pub fn required(tool_name: &str) -> Option<Capability> {
     }
 }
 
-/// Verifica que el perfil tenga la capacidad para ejecutar la herramienta.
+/// Verifies the profile has the capability to execute the tool.
 ///
-/// # Errores
-/// `Authorization` si el perfil no permite la capacidad requerida.
+/// # Errors
+/// `Authorization` if the profile does not grant the required capability.
 pub fn check(profile: Profile, tool: &str) -> Result<(), DomainError> {
     match required(tool) {
         None => Ok(()),
@@ -80,11 +81,9 @@ pub fn check(profile: Profile, tool: &str) -> Result<(), DomainError> {
 }
 
 /// Indica si una herramienta debe listarse dado el perfil actual.
+#[must_use]
 pub fn visible_in(profile: Profile, tool: &str) -> bool {
-    match required(tool) {
-        Some(cap) => profile.has(cap),
-        None => true,
-    }
+    required(tool).is_none_or(|cap| profile.has(cap))
 }
 
 #[cfg(test)]

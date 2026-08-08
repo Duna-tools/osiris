@@ -165,69 +165,61 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
         let msg: Value = serde_json::from_str(&line).unwrap();
         let id = msg["id"].as_u64().unwrap();
         if msg["op"] == "get_version" {
-            writeln!(writer, r#"{{"type":"response","id":{},"ok":{{"godot":"4.5.1","project":"test-project"}}}}"#, id).unwrap();
+            writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"godot":"4.5.1","project":"test-project"}}}}"#).unwrap();
         } else if msg["op"] == "get_active_scene" {
-            writeln!(writer, r#"{{"type":"response","id":{},"ok":{{"path":"res://main.tscn","root_name":"Main","node_count":5}}}}"#, id).unwrap();
+            writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"path":"res://main.tscn","root_name":"Main","node_count":5}}}}"#).unwrap();
         } else if msg["op"] == "get_property" {
-            writeln!(writer, r#"{{"type":"response","id":{},"ok":{{"path":".","property":"position","value":{{"x":1.5,"y":2.0}}}}}}"#, id).unwrap();
+            writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"path":".","property":"position","value":{{"x":1.5,"y":2.0}}}}}}"#).unwrap();
         } else if msg["op"] == "get_editor_errors" {
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{},"ok":{{"errors":[]}}}}"#,
-                id
+                r#"{{"type":"response","id":{id},"ok":{{"errors":[]}}}}"#
             )
             .unwrap();
         } else if msg["op"] == "create_node" {
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{},"ok":{{"path":"./Sprite","type":"Node2D","name":"Sprite"}}}}"#,
-                id
+                r#"{{"type":"response","id":{id},"ok":{{"path":"./Sprite","type":"Node2D","name":"Sprite"}}}}"#
             )
             .unwrap();
         } else if msg["op"] == "remove_node" {
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{},"ok":{{"removed":"OldNode"}}}}"#,
-                id
+                r#"{{"type":"response","id":{id},"ok":{{"removed":"OldNode"}}}}"#
             )
             .unwrap();
         } else if msg["op"] == "set_property" {
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{},"ok":{{"property":"position","value":{{"x":10.0,"y":20.0}}}}}}"#,
-                id
+                r#"{{"type":"response","id":{id},"ok":{{"property":"position","value":{{"x":10.0,"y":20.0}}}}}}"#
             )
             .unwrap();
         } else if msg["op"] == "save_scene" {
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{},"ok":{{"saved":"res://main.tscn"}}}}"#,
-                id
+                r#"{{"type":"response","id":{id},"ok":{{"saved":"res://main.tscn"}}}}"#
             )
             .unwrap();
         } else if msg["op"] == "run_project" {
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{},"ok":{{"running":true}}}}"#,
-                id
+                r#"{{"type":"response","id":{id},"ok":{{"running":true}}}}"#
             )
             .unwrap();
         } else if msg["op"] == "stop_project" || msg["op"] == "get_run_status" {
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{},"ok":{{"running":false}}}}"#,
-                id
+                r#"{{"type":"response","id":{id},"ok":{{"running":false}}}}"#
             )
             .unwrap();
         } else if msg["op"] == "assert_property" {
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{},"ok":{{"match":true,"actual":100,"expected":100}}}}"#,
-                id
+                r#"{{"type":"response","id":{id},"ok":{{"match":true,"actual":100,"expected":100}}}}"#
             )
             .unwrap();
         } else {
-            writeln!(writer, r#"{{"type":"response","id":{},"ok":{{}}}}"#, id).unwrap();
+            writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
         }
         writer.flush().unwrap();
     });

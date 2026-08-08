@@ -16,6 +16,7 @@ use osiris_policy::Profile;
 pub const INVALID_PARAMS: i64 = -32602;
 
 /// Lista de herramientas para `tools/list`, filtradas por el perfil de capacidades.
+#[must_use]
 pub fn list(profile: Profile) -> Value {
     let all = all_tools();
     let visible: Vec<Value> = all
@@ -25,6 +26,7 @@ pub fn list(profile: Profile) -> Value {
     json!({ "tools": visible })
 }
 
+#[allow(clippy::too_many_lines)]
 fn all_tools() -> Vec<Value> {
     vec![
         json!({
@@ -147,9 +149,9 @@ fn all_tools() -> Vec<Value> {
 
 /// Ejecuta `tools/call`. `ipc` es la conexión al puente, si existe.
 ///
-/// # Errores
-/// `RpcError` con `INVALID_PARAMS` si falta `params.name` o la herramienta no
-/// existe (spec MCP: error de protocolo, no `isError`).
+/// # Errors
+/// `RpcError` with `INVALID_PARAMS` if `params.name` is missing or the tool
+/// is unknown (MCP spec: protocol error, not `isError`).
 pub fn call(
     params: &Value,
     ipc: Option<&mut IpcClient>,

@@ -40,7 +40,8 @@ pub enum DomainError {
 
 impl DomainError {
     /// Código estable, seguro de exponer a un cliente MCP.
-    pub fn code(&self) -> &'static str {
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
         match self {
             Self::Validation(_) => "validation",
             Self::Authentication => "authentication",
@@ -56,11 +57,10 @@ impl DomainError {
     }
 
     /// ¿La operación puede reintentarse tal cual?
-    pub fn retryable(&self) -> bool {
+    #[must_use]
+    pub const fn retryable(&self) -> bool {
         match self {
-            Self::Saturation(_) => true,
-            Self::Ipc(_) => true,
-            Self::Conflict(_) => true,
+            Self::Saturation(_) | Self::Ipc(_) | Self::Conflict(_) => true,
             Self::Timeout(_)
             | Self::Godot(_)
             | Self::Validation(_)
@@ -89,16 +89,16 @@ mod tests {
     #[test]
     fn every_variant_has_a_stable_code() {
         let cases = [
-            (DomainError::Validation("".into()), "validation"),
+            (DomainError::Validation(String::new()), "validation"),
             (DomainError::Authentication, "authentication"),
-            (DomainError::Authorization("".into()), "authorization"),
-            (DomainError::Compatibility("".into()), "compatibility"),
-            (DomainError::Saturation("".into()), "saturation"),
-            (DomainError::Timeout("".into()), "timeout"),
-            (DomainError::Godot("".into()), "godot"),
-            (DomainError::Ipc("".into()), "ipc"),
-            (DomainError::Conflict("".into()), "conflict"),
-            (DomainError::Internal("".into()), "internal"),
+            (DomainError::Authorization(String::new()), "authorization"),
+            (DomainError::Compatibility(String::new()), "compatibility"),
+            (DomainError::Saturation(String::new()), "saturation"),
+            (DomainError::Timeout(String::new()), "timeout"),
+            (DomainError::Godot(String::new()), "godot"),
+            (DomainError::Ipc(String::new()), "ipc"),
+            (DomainError::Conflict(String::new()), "conflict"),
+            (DomainError::Internal(String::new()), "internal"),
         ];
         for (e, code) in cases {
             assert_eq!(e.code(), code, "código estable para {e}");
