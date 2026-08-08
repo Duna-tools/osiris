@@ -66,10 +66,10 @@ pub fn required(tool_name: &str) -> Option<Capability> {
     }
 }
 
-/// Verifies the profile has the capability to execute the tool.
+/// Verifica que el perfil tenga la capacidad para ejecutar la herramienta.
 ///
 /// # Errors
-/// `Authorization` if the profile does not grant the required capability.
+/// Devuelve `Authorization` si el perfil no concede la capacidad requerida.
 pub fn check(profile: Profile, tool: &str) -> Result<(), DomainError> {
     match required(tool) {
         None => Ok(()),

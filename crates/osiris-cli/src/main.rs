@@ -6,8 +6,8 @@
 
 mod config;
 
-use std::process::ExitCode;
 use osiris_telemetry::{error, info, warn};
+use std::process::ExitCode;
 
 fn connect_ipc(cfg: &config::Config) -> Option<osiris_ipc_client::IpcClient> {
     let addr = cfg.ipc_addr.as_ref()?;
@@ -77,4 +77,3 @@ fn main() -> ExitCode {
     }
     ExitCode::SUCCESS
 }
-

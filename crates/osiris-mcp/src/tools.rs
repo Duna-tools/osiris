@@ -2,7 +2,7 @@
 //!
 //! El despacho delega a `osiris_application::handle_tool` (ADR-003). Este módulo
 //! solo declara la superficie MCP: nombres, descripciones y esquemas.
-//! La autorización por capacidades llegará con `osiris-policy` (ADR-005, Fase E).
+//! La autorización por capacidades se aplica en `osiris-policy` (ADR-005).
 
 use serde_json::{Value, json};
 
@@ -163,8 +163,8 @@ fn all_tools() -> Vec<Value> {
 /// Ejecuta `tools/call`. `ipc` es la conexión al puente, si existe.
 ///
 /// # Errors
-/// `RpcError` with `INVALID_PARAMS` if `params.name` is missing or the tool
-/// is unknown (MCP spec: protocol error, not `isError`).
+/// `RpcError` con `INVALID_PARAMS` si falta `params.name` o la herramienta es
+/// desconocida (spec MCP: error de protocolo, no `isError`).
 pub fn call(
     params: &Value,
     ipc: Option<&mut IpcClient>,
