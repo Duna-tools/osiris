@@ -10,6 +10,8 @@ use std::str::FromStr;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
 
+pub use tracing::{error, info, warn};
+
 /// Construye el filtro de nivel a partir de la configuración.
 ///
 /// Acepta un nivel simple (`trace|debug|info|warn|error|off`) o directivas

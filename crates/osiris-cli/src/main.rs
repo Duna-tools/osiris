@@ -7,6 +7,36 @@
 mod config;
 
 use std::process::ExitCode;
+use osiris_telemetry::{error, info, warn};
+
+fn connect_ipc(cfg: &config::Config) -> Option<osiris_ipc_client::IpcClient> {
+    let addr = cfg.ipc_addr.as_ref()?;
+    let token = cfg
+        .ipc_token_file
+        .as_deref()
+        .map(|f| {
+            std::fs::read_to_string(f)
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_default();
+
+    match osiris_ipc_client::IpcClient::connect(addr, &token, std::time::Duration::from_secs(3)) {
+        Ok(client) => {
+            info!(
+                godot = %client.godot_version,
+                addr = %addr,
+                "conectado al puente Godot"
+            );
+            Some(client)
+        }
+        Err(e) => {
+            warn!(error = %e, "no se pudo conectar al puente Godot; herramientas Godot no disponibles");
+            None
+        }
+    }
+}
 
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
@@ -37,45 +67,14 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let ipc = match &cfg.ipc_addr {
-        Some(addr) => {
-            let token = cfg
-                .ipc_token_file
-                .as_deref()
-                .map(|f| {
-                    std::fs::read_to_string(f)
-                        .unwrap_or_default()
-                        .trim()
-                        .to_string()
-                })
-                .unwrap_or_default();
-            match osiris_ipc_client::IpcClient::connect(
-                addr,
-                &token,
-                std::time::Duration::from_secs(3),
-            ) {
-                Ok(client) => {
-                    tracing::info!(
-                        godot = %client.godot_version,
-                        addr = %addr,
-                        "conectado al puente Godot"
-                    );
-                    Some(client)
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "no se pudo conectar al puente Godot; herramientas Godot no disponibles");
-                    None
-                }
-            }
-        }
-        None => None,
-    };
+    let ipc = connect_ipc(&cfg);
 
-    tracing::info!(bind_addr = %cfg.bind_addr, "servidor MCP stdio iniciado");
+    info!(bind_addr = %cfg.bind_addr, "servidor MCP stdio iniciado");
     let mut server = osiris_mcp::server::Server::new(ipc, cfg.capability_profile);
     if let Err(e) = osiris_mcp::server::run_server(&mut server) {
-        tracing::error!(error = %e, "el servidor stdio terminó con error");
+        error!(error = %e, "el servidor stdio terminó con error");
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
 }
+
