@@ -55,7 +55,11 @@ fn main() -> ExitCode {
                 std::time::Duration::from_secs(3),
             ) {
                 Ok(client) => {
-                    tracing::info!(godot = %client.godot_version, "conectado al puente Godot en {addr}");
+                    tracing::info!(
+                        godot = %client.godot_version,
+                        addr = %addr,
+                        "conectado al puente Godot"
+                    );
                     Some(client)
                 }
                 Err(e) => {

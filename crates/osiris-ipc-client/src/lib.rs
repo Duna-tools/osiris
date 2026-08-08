@@ -108,7 +108,7 @@ impl IpcClient {
     /// Best-effort cancellation (the bridge may ignore it if already done).
     ///
     /// # Errors
-    /// Returns  if the write to the bridge fails.
+    /// Returns `DomainError::Ipc` or `DomainError::Internal` if the write to the bridge fails.
     pub fn cancel(&mut self, id: u64) -> Result<(), DomainError> {
         self.send(&ClientMessage::Cancel { id })
     }
@@ -199,8 +199,9 @@ mod tests {
     #[test]
     fn handshake_and_call_roundtrip() {
         let addr = fake_bridge(|mut reader, mut stream| {
-            let ClientMessage::Hello { protocol, token } = read_line(&mut reader) else {
-                panic!("esperaba hello");
+            let (protocol, token) = match read_line(&mut reader) {
+                ClientMessage::Hello { protocol, token } => (protocol, token),
+                msg => panic!("esperaba hello, recibido: {msg:?}"),
             };
             assert_eq!(protocol, PROTOCOL_VERSION);
             assert_eq!(token, "secreto");
@@ -211,8 +212,9 @@ mod tests {
                     godot: "4.5.1".into(),
                 },
             );
-            let ClientMessage::Request { id, op, .. } = read_line(&mut reader) else {
-                panic!("esperaba request");
+            let (id, op) = match read_line(&mut reader) {
+                ClientMessage::Request { id, op, .. } => (id, op),
+                msg => panic!("esperaba request, recibido: {msg:?}"),
             };
             assert_eq!(op, "get_version");
             send(
@@ -281,8 +283,9 @@ mod tests {
                     godot: "4.5.1".into(),
                 },
             );
-            let ClientMessage::Request { id, .. } = read_line(&mut reader) else {
-                panic!("esperaba request");
+            let id = match read_line(&mut reader) {
+                ClientMessage::Request { id, .. } => id,
+                msg => panic!("esperaba request, recibido: {msg:?}"),
             };
             send(
                 &mut stream,

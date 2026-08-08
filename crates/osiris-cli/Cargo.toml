@@ -22,7 +22,7 @@ osiris-ipc-client = { workspace = true }
 osiris-telemetry = { workspace = true }
 toml = "1.1.4"
 serde = { version = "1.0.229", features = ["derive"] }
-tracing = "0.1.44"
+tracing = { workspace = true }
 
 [dev-dependencies]
 serde_json = "1.0.151"
