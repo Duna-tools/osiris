@@ -20,7 +20,7 @@ pub use tracing::{error, info, warn};
 /// contra `LevelFilter` para que un typo falle en arranque y no silencie logs.
 ///
 /// # Errors
-/// Returns `Err` if the string is not a valid level or directive.
+/// Devuelve `Err` si la cadena no es un nivel o una directiva válida.
 fn filter(log_level: &str) -> Result<EnvFilter, String> {
     let simple = !log_level.contains(['=', ',']);
     if simple && LevelFilter::from_str(log_level).is_err() {
@@ -39,7 +39,7 @@ fn filter(log_level: &str) -> Result<EnvFilter, String> {
 /// Debe llamarse una sola vez al arrancar el proceso.
 ///
 /// # Errors
-/// Returns `Err` if the level is invalid or the global subscriber already exists.
+/// Devuelve `Err` si el nivel es inválido o el suscriptor global ya existe.
 pub fn init(log_level: &str) -> Result<(), String> {
     let filter = filter(log_level)?;
     tracing_subscriber::fmt()

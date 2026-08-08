@@ -64,10 +64,10 @@ fn cache_key(tool: &str, params: &Value) -> String {
 
 /// Despacha el `tools/call` hacia la herramienta correcta (local o puente).
 ///
-/// `profile` determines the client's capabilities (ADR-005).
+/// `profile` determina las capacidades del cliente (ADR-005).
 ///
 /// # Errors
-/// Returns `Err` if the tool is unauthorized, unknown, or IPC fails.
+/// Devuelve `Err` si la herramienta no está autorizada, es desconocida o el IPC falla.
 pub fn handle_tool(
     name: &str,
     params: &Value,
@@ -153,10 +153,10 @@ fn plain_result() -> fn(&IpcClient, &Value) -> Value {
     |_, result| result.clone()
 }
 
-/// Executes an order on the bridge and wraps the result as MCP text.
+/// Ejecuta una orden en el puente y envuelve el resultado como texto MCP.
 ///
 /// # Errors
-/// Returns `Err` if IPC is not configured or the bridge call fails.
+/// Devuelve `Err` si el IPC no está configurado o la llamada al puente falla.
 fn ipc_tool(
     ipc: Option<&mut IpcClient>,
     op: &str,

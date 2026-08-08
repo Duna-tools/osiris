@@ -37,10 +37,10 @@ impl IpcClient {
     /// Conecta al puente, envía `hello` y valida el ack.
     ///
     /// # Errors
-    /// - `Ipc`: invalid address, connection refused, or broken channel.
-    /// - `Timeout`: bridge did not respond within `timeout`.
-    /// - `Authentication`: token rejected.
-    /// - `Compatibility`: incompatible protocol version.
+    /// - `Ipc`: dirección inválida, conexión rechazada o canal roto.
+    /// - `Timeout`: el puente no respondió dentro de `timeout`.
+    /// - `Authentication`: token rechazado.
+    /// - `Compatibility`: versión de protocolo incompatible.
     pub fn connect(addr: &str, token: &str, timeout: Duration) -> Result<Self, DomainError> {
         let socket = addr
             .to_socket_addrs()
@@ -83,7 +83,7 @@ impl IpcClient {
     /// descartan (no hay multiplexación hoy: una solicitud en vuelo).
     ///
     /// # Errors
-    /// `Timeout`, `Ipc`, or the `DomainError` reported by the bridge.
+    /// `Timeout`, `Ipc` o el `DomainError` que reporte el puente.
     pub fn call(&mut self, op: &str, params: Value) -> Result<Value, DomainError> {
         let id = self.next_id;
         self.next_id += 1;
@@ -105,10 +105,10 @@ impl IpcClient {
         }
     }
 
-    /// Best-effort cancellation (the bridge may ignore it if already done).
+    /// Cancelación best-effort (el puente puede ignorarla si ya terminó).
     ///
     /// # Errors
-    /// Returns `DomainError::Ipc` or `DomainError::Internal` if the write to the bridge fails.
+    /// Devuelve `DomainError::Ipc` o `DomainError::Internal` si la escritura al puente falla.
     pub fn cancel(&mut self, id: u64) -> Result<(), DomainError> {
         self.send(&ClientMessage::Cancel { id })
     }

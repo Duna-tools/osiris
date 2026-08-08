@@ -10,8 +10,9 @@
 //!
 //! Límites (RF-035/RNF-001): mensaje máximo [`MAX_MESSAGE_BYTES`]; el
 //! procesamiento es secuencial (un mensaje a la vez), que es la estrategia de
-//! backpressure en stdio. Límite de duración y cancelación: pendientes hasta
-//! que existan herramientas de larga duración (Fase C+).
+//! backpressure en stdio. El límite de duración y cancelación está pendiente
+//! de las herramientas de larga duración (run/stop, T-060) y se fijará con
+//! un presupuesto de hilo principal cuando se midan tiempos reales.
 
 use std::io::{self, BufRead, Write};
 
@@ -147,7 +148,7 @@ impl Server {
 /// Main loop: reads stdin lines and writes responses to stdout until EOF.
 ///
 /// # Errors
-/// Returns `Err` on I/O error reading stdin or writing stdout.
+/// Devuelve `Err` por error de E/S al leer stdin o escribir stdout.
 pub fn run_server(server: &mut Server) -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout().lock();

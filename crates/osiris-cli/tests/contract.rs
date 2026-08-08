@@ -502,4 +502,3 @@ fn validate_script_over_ipc() {
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(r["valid"], true);
 }
-

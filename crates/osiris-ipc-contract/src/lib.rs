@@ -94,7 +94,7 @@ impl BridgeMessage {
 /// Serializes a message to its NDJSON line.
 ///
 /// # Errors
-/// Returns `Err` if serialization fails.
+/// Devuelve `Err` si la serialización falla.
 pub fn encode(msg: &impl Serialize) -> Result<String, serde_json::Error> {
     serde_json::to_string(msg)
 }
@@ -102,7 +102,7 @@ pub fn encode(msg: &impl Serialize) -> Result<String, serde_json::Error> {
 /// Parses an NDJSON line to a bridge message.
 ///
 /// # Errors
-/// Returns `Err` if the line is not valid JSON or unknown type.
+/// Devuelve `Err` si la línea no es JSON válido o el tipo es desconocido.
 pub fn decode_bridge(line: &str) -> Result<BridgeMessage, serde_json::Error> {
     serde_json::from_str(line)
 }
@@ -110,7 +110,7 @@ pub fn decode_bridge(line: &str) -> Result<BridgeMessage, serde_json::Error> {
 /// Parses an NDJSON line to a client message.
 ///
 /// # Errors
-/// Returns `Err` if the line is not valid JSON or unknown type.
+/// Devuelve `Err` si la línea no es JSON válido o el tipo es desconocido.
 pub fn decode_client(line: &str) -> Result<ClientMessage, serde_json::Error> {
     serde_json::from_str(line)
 }
