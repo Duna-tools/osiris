@@ -177,6 +177,27 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 id
             )
             .unwrap();
+        } else if msg["op"] == "create_node" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{},"ok":{{"path":"./Sprite","type":"Node2D","name":"Sprite"}}}}"#,
+                id
+            )
+            .unwrap();
+        } else if msg["op"] == "remove_node" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{},"ok":{{"removed":"OldNode"}}}}"#,
+                id
+            )
+            .unwrap();
+        } else if msg["op"] == "set_property" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{},"ok":{{"property":"position","value":{{"x":10.0,"y":20.0}}}}}}"#,
+                id
+            )
+            .unwrap();
         } else {
             writeln!(writer, r#"{{"type":"response","id":{},"ok":{{}}}}"#, id).unwrap();
         }
@@ -185,7 +206,12 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
     (addr, handle, token_path)
 }
 
-fn spawn_bridge_server(addr: &str, token_path: &str, tools: &[&str]) -> (Vec<Value>, String) {
+fn spawn_bridge_server(
+    addr: &str,
+    token_path: &str,
+    tools: &[&str],
+    profile: &str,
+) -> (Vec<Value>, String) {
     let input = tools
         .iter()
         .enumerate()
@@ -216,6 +242,8 @@ fn spawn_bridge_server(addr: &str, token_path: &str, tools: &[&str]) -> (Vec<Val
         .arg(addr)
         .arg("--ipc-token-file")
         .arg(token_path)
+        .arg("--capability-profile")
+        .arg(profile)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -242,7 +270,7 @@ fn godot_diagnose_over_ipc() {
     let (addr, _bridge, token_path) = fake_bridge("tok");
     // Small sleep to let the bridge thread start listening
     thread::sleep(Duration::from_millis(100));
-    let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot_diagnose"]);
+    let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot_diagnose"], "read");
     assert_eq!(lines.len(), 2, "initialize + godot_diagnose");
     assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
     let diag = &lines[1]["result"];
@@ -270,7 +298,7 @@ fn write_tool_rejected_on_read_profile() {
 fn godot_scene_active_over_ipc() {
     let (addr, _bridge, token_path) = fake_bridge("tok");
     thread::sleep(Duration::from_millis(100));
-    let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot.scene.active"]);
+    let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot.scene.active"], "read");
     assert_eq!(lines.len(), 2, "initialize + godot.scene.active: {lines:?}");
     let active: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -302,7 +330,8 @@ fn godot_props_tools_error_without_ipc() {
 fn godot_property_over_ipc() {
     let (addr, _bridge, token_path) = fake_bridge("tok");
     thread::sleep(Duration::from_millis(100));
-    let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot.scene.properties"]);
+    let (lines, _stderr) =
+        spawn_bridge_server(&addr, &token_path, &["godot.scene.properties"], "read");
     assert_eq!(lines.len(), 2);
     let val: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -327,9 +356,23 @@ fn godot_editor_errors_tools_with_and_without_ipc() {
     // con IPC: resultado
     let (addr, _bridge, token_path) = fake_bridge("tok");
     thread::sleep(Duration::from_millis(100));
-    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.editor.errors"]);
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.editor.errors"], "read");
     assert_eq!(lines.len(), 2);
     let val: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(val["errors"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn write_tools_work_with_edit_profile() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _stderr) =
+        spawn_bridge_server(&addr, &token_path, &["godot.scene.create_node"], "edit");
+    assert_eq!(lines.len(), 2, "initialize + create_node: {lines:?}");
+    assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
+    let create: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(create["path"], "./Sprite");
+    assert_eq!(create["type"], "Node2D");
 }
