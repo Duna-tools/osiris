@@ -123,6 +123,7 @@ fn execute_tool(
         // Ejecución
         "godot.run" => ipc_tool(ipc, "run_project", Value::Null, plain_result()),
         "godot.stop" => ipc_tool(ipc, "stop_project", Value::Null, plain_result()),
+        "godot.run.status" => ipc_tool(ipc, "get_run_status", Value::Null, plain_result()),
         _ => Err(DomainError::Validation(format!(
             "herramienta desconocida: {name}"
         ))),

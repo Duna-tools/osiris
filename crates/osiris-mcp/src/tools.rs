@@ -111,8 +111,20 @@ fn all_tools() -> Vec<Value> {
         }),
         json!({
             "name": "godot.run",
-            "title": "Ejecutar proyecto (próximamente)",
+            "title": "Ejecutar proyecto",
             "description": "Inicia la ejecución del proyecto. Requiere perfil admin.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.stop",
+            "title": "Detener proyecto",
+            "description": "Detiene la ejecución del proyecto. Requiere perfil admin.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.run.status",
+            "title": "Estado de ejecución",
+            "description": "Devuelve si el proyecto está en ejecución. Solo lectura.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
     ]
@@ -146,7 +158,8 @@ pub fn call(
         | "godot.scene.set_property"
         | "godot.scene.save"
         | "godot.run"
-        | "godot.stop" => {
+        | "godot.stop"
+        | "godot.run.status" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))
