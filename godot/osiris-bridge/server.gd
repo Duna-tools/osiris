@@ -150,8 +150,22 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _get_run_status(id)
 		"assert_property":
 			return _assert_property(id, msg.get("params", {}))
+		"validate_script":
+			return _validate_script(id, msg.get("params", {}))
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
+
+func _validate_script(id: Variant, params: Dictionary) -> Dictionary:
+	var code: String = params.get("code", "")
+	if code == "":
+		return _error(id, "validation", "parámetro 'code' requerido")
+	var script := GDScript.new()
+	script.source_code = code
+	var err: int = script.reload()
+	if err != OK:
+		return _error(id, "validation", "error de sintaxis en el script (código %d)" % err)
+	return _ok(id, {"valid": true})
+
 
 func _get_version(id: Variant) -> Dictionary:
 	var vi: Dictionary = Engine.get_version_info()

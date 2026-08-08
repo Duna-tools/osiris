@@ -144,6 +144,19 @@ fn all_tools() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "godot.script.validate",
+            "title": "Validar sintaxis de script",
+            "description": "Valida la sintaxis de un código GDScript antes de escribirlo en disco.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": { "type": "string", "description": "Código GDScript a validar." }
+                },
+                "required": ["code"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -177,7 +190,8 @@ pub fn call(
         | "godot.run"
         | "godot.stop"
         | "godot.run.status"
-        | "godot.assert.property" => {
+        | "godot.assert.property"
+        | "godot.script.validate" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

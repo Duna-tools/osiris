@@ -218,6 +218,12 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"match":true,"actual":100,"expected":100}}}}"#
             )
             .unwrap();
+        } else if msg["op"] == "validate_script" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"valid":true}}}}"#
+            )
+            .unwrap();
         } else {
             writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
         }
@@ -485,3 +491,15 @@ fn assert_property_over_ipc() {
     assert_eq!(r["match"], true);
     assert_eq!(r["actual"], 100);
 }
+
+#[test]
+fn validate_script_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.script.validate"], "read");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["valid"], true);
+}
+
