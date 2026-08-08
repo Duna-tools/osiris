@@ -12,8 +12,9 @@ var _peer_buffers: Dictionary = {}
 var _busy: bool = false
 var _token: String = ""
 var _editor: EditorInterface = null
+var _undo_redo: EditorUndoRedoManager = null
 
-func start(addr: String, port: int, editor: EditorInterface) -> void:
+func start(addr: String, port: int, editor: EditorInterface, undo_redo: EditorUndoRedoManager) -> void:
 	_tcp = TCPServer.new()
 	if _tcp.listen(port, addr) != OK:
 		push_error("[OsirisBridge] no se puede escuchar en %s:%d" % [addr, port])
@@ -22,6 +23,7 @@ func start(addr: String, port: int, editor: EditorInterface) -> void:
 	_token = _generate_token()
 	_write_token()
 	_editor = editor
+	_undo_redo = undo_redo
 	print_rich("[OsirisBridge] escuchando en %s:%d" % [addr, port])
 
 func stop() -> void:
@@ -306,6 +308,10 @@ func _create_node(id: Variant, params: Dictionary) -> Dictionary:
 	new_node.name = node_name if node_name else node_type
 	parent.add_child(new_node, true)
 	new_node.set_owner(_editor.get_edited_scene_root())
+	_undo_redo.create_action("Osiris: crear nodo")
+	_undo_redo.add_do_method(new_node, "set_owner", _editor.get_edited_scene_root())
+	_undo_redo.add_undo_method(parent, "remove_child", new_node)
+	_undo_redo.commit_action()
 	return _ok(id, {"path": "%s/%s" % [raw_path, new_node.name], "type": node_type, "name": new_node.name})
 
 func _remove_node(id: Variant, params: Dictionary) -> Dictionary:
@@ -327,7 +333,12 @@ func _set_property(id: Variant, params: Dictionary) -> Dictionary:
 	if prop == "":
 		return _error(id, "validation", "parámetro 'property' requerido")
 	var value: Variant = params.get("value")
+	var old_value: Variant = node.get(prop)
 	node.set(prop, _json_to_variant(value))
+	_undo_redo.create_action("Osiris: cambiar %s" % prop)
+	_undo_redo.add_do_method(node, "set", prop, _json_to_variant(value))
+	_undo_redo.add_undo_method(node, "set", prop, old_value)
+	_undo_redo.commit_action()
 	return _ok(id, {"property": prop, "value": _variant_to_json(node.get(prop))})
 
 func _json_to_variant(v: Variant) -> Variant:

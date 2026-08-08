@@ -10,7 +10,7 @@ func _enter_tree() -> void:
 	@warning_ignore("inferred_declaration")
 	randomize()
 	_server = preload("res://addons/osiris-bridge/server.gd").new()
-	_server.start(BIND_ADDR, BIND_PORT, get_editor_interface())
+	_server.start(BIND_ADDR, BIND_PORT, get_editor_interface(), get_undo_redo())
 	if FileAccess.file_exists("res://scenes/main.tscn"):
 		get_editor_interface().open_scene_from_path("res://scenes/main.tscn")
 
