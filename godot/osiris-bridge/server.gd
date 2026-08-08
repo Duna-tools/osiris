@@ -131,6 +131,12 @@ func _request(msg: Dictionary) -> Dictionary:
 \t\t\treturn _list_resources(id, msg.get("params", {}))
 \t\t"get_editor_errors":
 \t\t\treturn _get_editor_errors(id)
+\t\t"create_node":
+\t\t\treturn _create_node(id, msg.get("params", {}))
+\t\t"remove_node":
+\t\t\treturn _remove_node(id, msg.get("params", {}))
+\t\t"set_property":
+\t\t\treturn _set_property(id, msg.get("params", {}))
 \t\t_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -277,6 +283,81 @@ func _variant_to_json(v: Variant, depth: int = 4) -> Variant:
 func _get_editor_errors(id: Variant) -> Dictionary:
 	# Godot 4 no expone API pública para leer los errores del editor.
 	return _ok(id, {"errors": [], "note": "Godot no expone errores del editor por API; el listado estará vacío hasta que la API exista"})
+
+func _resolve_node(params: Dictionary) -> Node:
+	var root := _editor.get_edited_scene_root()
+	var node_path: String = params.get("path", ".")
+	return root if node_path == "." else root.get_node_or_null(NodePath(node_path))
+
+func _create_node(id: Variant, params: Dictionary) -> Dictionary:
+	var parent := _resolve_node(params)
+	if not parent:
+		return _error(id, "godot", "nodo padre no encontrado")
+	var node_type: String = params.get("type", "")
+	if node_type == "":
+		return _error(id, "validation", "parámetro 'type' requerido")
+	var new_node: Variant = ClassDB.instantiate(node_type)
+	if not new_node:
+		return _error(id, "godot", "tipo de nodo desconocido: %s" % node_type)
+	var node_name: String = params.get("name", "")
+	new_node.name = node_name if node_name else node_type
+	parent.add_child(new_node, true)
+	_editor.get_undo_redo().create_action("Osiris: crear nodo")
+	_editor.get_undo_redo().add_do_method(new_node, "set_owner", _editor.get_edited_scene_root())
+	_editor.get_undo_redo().add_undo_method(new_node, "queue_free")
+	_editor.get_undo_redo().commit_action()
+	var node_path := params.get("path", ".")
+	return _ok(id, {"path": "%s/%s" % [node_path, new_node.name], "type": node_type, "name": new_node.name})
+
+func _remove_node(id: Variant, params: Dictionary) -> Dictionary:
+	var node := _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	if node == _editor.get_edited_scene_root():
+		return _error(id, "godot", "no se puede eliminar la raíz de la escena")
+	var node_name := node.name
+	var parent := node.get_parent()
+	node.queue_free()
+	return _ok(id, {"removed": node_name})
+
+func _set_property(id: Variant, params: Dictionary) -> Dictionary:
+	var node := _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var prop: String = params.get("property", "")
+	if prop == "":
+		return _error(id, "validation", "parámetro 'property' requerido")
+	var value: Variant = params.get("value")
+	var old_value: Variant = node.get(prop)
+	node.set(prop, _json_to_variant(value))
+	_editor.get_undo_redo().create_action("Osiris: cambiar propiedad")
+	_editor.get_undo_redo().add_do_method(node, "set", prop, _json_to_variant(value))
+	_editor.get_undo_redo().add_undo_method(node, "set", prop, old_value)
+	_editor.get_undo_redo().commit_action()
+	return _ok(id, {"property": prop, "value": _variant_to_json(node.get(prop))})
+
+func _json_to_variant(v: Variant) -> Variant:
+	if v == null: return null
+	var t := typeof(v)
+	if t == TYPE_BOOL or t == TYPE_INT or t == TYPE_FLOAT or t == TYPE_STRING:
+		return v
+	if t == TYPE_DICTIONARY:
+		# Intentar reconstruir un vector, color, etc. desde keys
+		if v.has("x") and v.has("y") and v.size() <= 4:
+			var keys := v.keys()
+			if keys.size() == 3 and v.has("z"):
+				return Vector3(v.x, v.y, v.z)
+			elif keys.size() == 4 and v.has("z") and v.has("w"):
+				return Quaternion(v.x, v.y, v.z, v.w)
+			elif keys.size() == 2:
+				return Vector2(v.x, v.y)
+		return v  # dict sin tipo, se pasa tal cual (Godot lo convierte)
+	if t == TYPE_ARRAY:
+		var arr := []
+		for item: Variant in v:
+			arr.append(_json_to_variant(item))
+		return arr
+	return v
 
 func _generate_token() -> String:
 	var bytes := PackedByteArray()
