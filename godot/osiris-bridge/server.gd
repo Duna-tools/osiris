@@ -139,6 +139,12 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _set_property(id, msg.get("params", {}))
 		"save_scene":
 			return _save_scene(id)
+		"run_project":
+			return _run_project(id)
+		"stop_project":
+			return _stop_project(id)
+		"get_run_status":
+			return _get_run_status(id)
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -378,6 +384,17 @@ func _validate_path(raw: String) -> String:
 	if raw.contains("..") or raw.contains("//") or raw.begins_with("/"):
 		return ""
 	return raw
+
+func _run_project(id: Variant) -> Dictionary:
+	_editor.play_main_scene()
+	return _ok(id, {"running": true})
+
+func _stop_project(id: Variant) -> Dictionary:
+	_editor.stop_playing_scene()
+	return _ok(id, {"running": false})
+
+func _get_run_status(id: Variant) -> Dictionary:
+	return _ok(id, {"running": _editor.is_playing_scene()})
 
 func _generate_token() -> String:
 	var bytes: PackedByteArray = PackedByteArray()
