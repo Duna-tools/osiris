@@ -38,7 +38,7 @@ func poll() -> void:
 		return
 	_busy = true
 	_accept()
-	var to_remove := []
+	var to_remove: Array = []
 	for p: StreamPeerTCP in _peers:
 		if p.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 			to_remove.append(p)
@@ -57,34 +57,34 @@ func _accept() -> void:
 
 func _process_peer(peer: StreamPeerTCP) -> void:
 	var buf: String = _peer_buffers.get(peer, "")
-	var avail := peer.get_available_bytes()
+	var avail: int = peer.get_available_bytes()
 	if avail > 0:
 		buf += peer.get_utf8_string(avail)
 
-	var newline := buf.find("\n")
+	var newline: int = buf.find("\n")
 	if newline < 0:
 		_peer_buffers[peer] = buf
 		return
 
-	var line := buf.substr(0, newline).strip_edges()
+	var line: String = buf.substr(0, newline).strip_edges()
 	buf = buf.substr(newline + 1)
 	_peer_buffers[peer] = buf
 	if line.length() > MAX_LINE_BYTES:
 		return
 
-	var test_json_conv := JSON.new()
+	var test_json_conv: JSON = JSON.new()
 	if test_json_conv.parse(line) != OK:
 		return
 	var msg: Dictionary = test_json_conv.get_data()
 	if typeof(msg) != TYPE_DICTIONARY:
 		return
 
-	var response := _dispatch(msg)
+	var response: Variant = _dispatch(msg)
 	if response:
 		_send(peer, response)
 
 func _send(peer: StreamPeerTCP, data: Dictionary) -> void:
-	var txt := JSON.stringify(data, "", false)
+	var txt: String = JSON.stringify(data, "", false)
 	peer.put_data((txt + "\n").to_utf8_buffer())
 
 func _dispatch(msg: Dictionary) -> Variant:
@@ -107,7 +107,7 @@ func _hello(msg: Dictionary) -> Dictionary:
 	if tok != _token:
 		return _hello_err("authentication", "token inválido")
 	var vi: Dictionary = Engine.get_version_info()
-	var ver := "%d.%d.%d" % [vi.major, vi.minor, vi.patch]
+	var ver: String = "%d.%d.%d" % [vi.major, vi.minor, vi.patch]
 	return {"type": "hello_ack", "protocol": PROTOCOL_VERSION, "godot": ver}
 
 func _hello_err(code: String, message: String) -> Dictionary:
@@ -123,33 +123,33 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _get_version(id)
 		"get_active_scene":
 			return _get_active_scene(id)
-\t\t"list_nodes":
-\t\t\treturn _list_nodes(id, msg.get("params", {}))
-\t\t"get_property":
-\t\t\treturn _get_property(id, msg.get("params", {}))
-\t\t"list_resources":
-\t\t\treturn _list_resources(id, msg.get("params", {}))
-\t\t"get_editor_errors":
-\t\t\treturn _get_editor_errors(id)
-\t\t"create_node":
-\t\t\treturn _create_node(id, msg.get("params", {}))
-\t\t"remove_node":
-\t\t\treturn _remove_node(id, msg.get("params", {}))
-\t\t"set_property":
-\t\t\treturn _set_property(id, msg.get("params", {}))
-\t\t_:
+		"list_nodes":
+			return _list_nodes(id, msg.get("params", {}))
+		"get_property":
+			return _get_property(id, msg.get("params", {}))
+		"list_resources":
+			return _list_resources(id, msg.get("params", {}))
+		"get_editor_errors":
+			return _get_editor_errors(id)
+		"create_node":
+			return _create_node(id, msg.get("params", {}))
+		"remove_node":
+			return _remove_node(id, msg.get("params", {}))
+		"set_property":
+			return _set_property(id, msg.get("params", {}))
+		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
 func _get_version(id: Variant) -> Dictionary:
 	var vi: Dictionary = Engine.get_version_info()
-	var info := {
+	var info: Dictionary = {
 		"godot": "%d.%d.%d" % [vi.major, vi.minor, vi.patch],
 		"project": ProjectSettings.get_setting("application/config/name", ""),
 	}
 	return _ok(id, info)
 
 func _get_active_scene(id: Variant) -> Dictionary:
-	var root := _editor.get_edited_scene_root()
+	var root: Node = _editor.get_edited_scene_root()
 	if not root:
 		return _error(id, "godot", "no hay escena activa")
 	return _ok(id, {
@@ -159,11 +159,11 @@ func _get_active_scene(id: Variant) -> Dictionary:
 	})
 
 func _list_nodes(id: Variant, params: Dictionary) -> Dictionary:
-	var root := _editor.get_edited_scene_root()
+	var root: Node = _editor.get_edited_scene_root()
 	if not root:
 		return _error(id, "godot", "no hay escena activa")
 	var start_path: String = params.get("path", ".")
-	var start := root
+	var start: Node = root
 	if start_path != ".":
 		start = root.get_node_or_null(NodePath(start_path))
 		if not start:
@@ -171,14 +171,14 @@ func _list_nodes(id: Variant, params: Dictionary) -> Dictionary:
 	var depth: int = clampi(params.get("depth", 3), 0, 20)
 	var max_total: int = clampi(params.get("max_total", 500), 1, 2000)
 	var items: Array = []
-	var has_more := _collect_nodes(start, depth, items, max_total)
+	var has_more: bool = _collect_nodes(start, depth, items, max_total)
 	return _ok(id, {
 		"items": items,
 		"has_more": has_more,
 	})
 
 func _count_nodes(node: Node) -> int:
-	var n := 1
+	var n: int = 1
 	for c in node.get_children():
 		n += _count_nodes(c)
 	return n
@@ -205,11 +205,11 @@ func _error(id: Variant, code: String, message: String, retryable: bool = false)
 	return {"type": "response", "id": id if id != null else null, "error": {"code": code, "message": message, "retryable": retryable}}
 
 func _get_property(id: Variant, params: Dictionary) -> Dictionary:
-	var root := _editor.get_edited_scene_root()
+	var root: Node = _editor.get_edited_scene_root()
 	if not root:
 		return _error(id, "godot", "no hay escena activa")
-	var node_path := params.get("path", ".")
-	var node := root
+	var node_path: String = params.get("path", ".")
+	var node: Node = root
 	if node_path != ".":
 		node = root.get_node_or_null(NodePath(node_path))
 	if not node:
@@ -225,11 +225,11 @@ func _get_property(id: Variant, params: Dictionary) -> Dictionary:
 	})
 
 func _list_resources(id: Variant, params: Dictionary) -> Dictionary:
-	var root := _editor.get_edited_scene_root()
+	var root: Node = _editor.get_edited_scene_root()
 	if not root:
 		return _error(id, "godot", "no hay escena activa")
-	var node_path := params.get("path", ".")
-	var node := root
+	var node_path: String = params.get("path", ".")
+	var node: Node = root
 	if node_path != ".":
 		node = root.get_node_or_null(NodePath(node_path))
 	if not node:
@@ -285,12 +285,12 @@ func _get_editor_errors(id: Variant) -> Dictionary:
 	return _ok(id, {"errors": [], "note": "Godot no expone errores del editor por API; el listado estará vacío hasta que la API exista"})
 
 func _resolve_node(params: Dictionary) -> Node:
-	var root := _editor.get_edited_scene_root()
+	var root: Node = _editor.get_edited_scene_root()
 	var node_path: String = params.get("path", ".")
 	return root if node_path == "." else root.get_node_or_null(NodePath(node_path))
 
 func _create_node(id: Variant, params: Dictionary) -> Dictionary:
-	var parent := _resolve_node(params)
+	var parent: Node = _resolve_node(params)
 	if not parent:
 		return _error(id, "godot", "nodo padre no encontrado")
 	var node_type: String = params.get("type", "")
@@ -302,49 +302,41 @@ func _create_node(id: Variant, params: Dictionary) -> Dictionary:
 	var node_name: String = params.get("name", "")
 	new_node.name = node_name if node_name else node_type
 	parent.add_child(new_node, true)
-	_editor.get_undo_redo().create_action("Osiris: crear nodo")
-	_editor.get_undo_redo().add_do_method(new_node, "set_owner", _editor.get_edited_scene_root())
-	_editor.get_undo_redo().add_undo_method(new_node, "queue_free")
-	_editor.get_undo_redo().commit_action()
-	var node_path := params.get("path", ".")
+	new_node.set_owner(_editor.get_edited_scene_root())
+	var node_path: String = params.get("path", ".")
 	return _ok(id, {"path": "%s/%s" % [node_path, new_node.name], "type": node_type, "name": new_node.name})
 
 func _remove_node(id: Variant, params: Dictionary) -> Dictionary:
-	var node := _resolve_node(params)
+	var node: Node = _resolve_node(params)
 	if not node:
 		return _error(id, "godot", "nodo no encontrado")
 	if node == _editor.get_edited_scene_root():
 		return _error(id, "godot", "no se puede eliminar la raíz de la escena")
-	var node_name := node.name
-	var parent := node.get_parent()
+	var node_name: String = node.name
+	var parent: Node = node.get_parent()
 	node.queue_free()
 	return _ok(id, {"removed": node_name})
 
 func _set_property(id: Variant, params: Dictionary) -> Dictionary:
-	var node := _resolve_node(params)
+	var node: Node = _resolve_node(params)
 	if not node:
 		return _error(id, "godot", "nodo no encontrado")
 	var prop: String = params.get("property", "")
 	if prop == "":
 		return _error(id, "validation", "parámetro 'property' requerido")
 	var value: Variant = params.get("value")
-	var old_value: Variant = node.get(prop)
 	node.set(prop, _json_to_variant(value))
-	_editor.get_undo_redo().create_action("Osiris: cambiar propiedad")
-	_editor.get_undo_redo().add_do_method(node, "set", prop, _json_to_variant(value))
-	_editor.get_undo_redo().add_undo_method(node, "set", prop, old_value)
-	_editor.get_undo_redo().commit_action()
 	return _ok(id, {"property": prop, "value": _variant_to_json(node.get(prop))})
 
 func _json_to_variant(v: Variant) -> Variant:
 	if v == null: return null
-	var t := typeof(v)
+	var t: int = typeof(v)
 	if t == TYPE_BOOL or t == TYPE_INT or t == TYPE_FLOAT or t == TYPE_STRING:
 		return v
 	if t == TYPE_DICTIONARY:
 		# Intentar reconstruir un vector, color, etc. desde keys
 		if v.has("x") and v.has("y") and v.size() <= 4:
-			var keys := v.keys()
+			var keys: Array = v.keys()
 			if keys.size() == 3 and v.has("z"):
 				return Vector3(v.x, v.y, v.z)
 			elif keys.size() == 4 and v.has("z") and v.has("w"):
@@ -360,14 +352,14 @@ func _json_to_variant(v: Variant) -> Variant:
 	return v
 
 func _generate_token() -> String:
-	var bytes := PackedByteArray()
+	var bytes: PackedByteArray = PackedByteArray()
 	bytes.resize(32)
 	for i in 32:
 		bytes[i] = randi() % 256
 	return bytes.hex_encode()
 
 func _write_token() -> void:
-	var f := FileAccess.open(TOKEN_FILE, FileAccess.WRITE)
+	var f: FileAccess = FileAccess.open(TOKEN_FILE, FileAccess.WRITE)
 	if f:
 		f.store_string(_token)
 		f.close()
