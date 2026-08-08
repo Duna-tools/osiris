@@ -93,6 +93,7 @@ version = "0.1.0"
 dependencies = [
  "osiris-domain",
  "osiris-ipc-client",
+ "osiris-policy",
  "serde_json",
 ]
 
@@ -143,6 +144,7 @@ dependencies = [
  "osiris-application",
  "osiris-domain",
  "osiris-ipc-client",
+ "osiris-policy",
  "serde",
  "serde_json",
 ]
