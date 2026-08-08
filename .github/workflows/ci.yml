@@ -19,3 +19,10 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - run: cargo build --workspace --locked
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+      - name: Scan de secretos
+        run: |
+          if grep -rn -iE "(api[_-]?key|secret|password|token)\s*=\s*['\"][^'\"]{8,}" --include="*.rs" --include="*.toml" . | grep -v "osiris_ipc_token\|ipc-token\|token_file\|TOKEN_FILE"; then
+            echo "Secreto potencial detectado"; exit 1
+          fi
