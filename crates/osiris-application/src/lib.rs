@@ -8,6 +8,58 @@ use osiris_domain::DomainError;
 use osiris_ipc_client::IpcClient;
 use osiris_policy::Profile;
 use serde_json::Value;
+use std::collections::VecDeque;
+
+/// Cache de idempotencia: evita re-ejecutar lecturas repetidas (error-model.md §4).
+const MAX_CACHE_ENTRIES: usize = 128;
+
+pub struct IdempotencyCache {
+    entries: VecDeque<(String, Value)>,
+}
+
+impl std::fmt::Debug for IdempotencyCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IdempotencyCache")
+            .field("entries", &self.entries.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for IdempotencyCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IdempotencyCache {
+    pub fn new() -> Self {
+        Self {
+            entries: VecDeque::with_capacity(MAX_CACHE_ENTRIES),
+        }
+    }
+
+    fn get(&self, key: &str) -> Option<&Value> {
+        self.entries
+            .iter()
+            .find_map(|(k, v)| (k == key).then_some(v))
+    }
+
+    fn put(&mut self, key: String, value: Value) {
+        // dedup: si ya existe, mover al frente (actualiza)
+        self.entries.retain(|(k, _)| k != &key);
+        if self.entries.len() >= MAX_CACHE_ENTRIES {
+            self.entries.pop_front();
+        }
+        self.entries.push_back((key, value));
+    }
+}
+
+fn cache_key(tool: &str, params: &Value) -> String {
+    format!(
+        "{tool}:{}",
+        serde_json::to_string(params).unwrap_or_default()
+    )
+}
 
 /// Despacha el `tools/call` hacia la herramienta correcta (local o puente).
 ///
@@ -17,8 +69,39 @@ pub fn handle_tool(
     params: &Value,
     ipc: Option<&mut IpcClient>,
     profile: Profile,
+    cache: &mut IdempotencyCache,
 ) -> Result<Value, DomainError> {
     osiris_policy::check(profile, name)?;
+
+    let is_write = matches!(
+        name,
+        "godot.scene.create_node"
+            | "godot.scene.remove_node"
+            | "godot.scene.set_property"
+            | "godot.scene.save"
+            | "godot.run"
+            | "godot.stop"
+    );
+
+    if !is_write {
+        let key = cache_key(name, params);
+        if let Some(cached) = cache.get(&key) {
+            return Ok(cached.clone());
+        }
+        let result = execute_tool(name, params, ipc, profile)?;
+        cache.put(key, result.clone());
+        Ok(result)
+    } else {
+        execute_tool(name, params, ipc, profile)
+    }
+}
+
+fn execute_tool(
+    name: &str,
+    params: &Value,
+    ipc: Option<&mut IpcClient>,
+    _profile: Profile, // ya verificado en handle_tool
+) -> Result<Value, DomainError> {
     match name {
         "osiris_diagnose" => Ok(osiris_diagnose()),
         "godot_diagnose" => ipc_tool(ipc, "get_version", Value::Null, |client, result| {
