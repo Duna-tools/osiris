@@ -23,6 +23,11 @@ use osiris_application::IdempotencyCache;
 use osiris_ipc_client::IpcClient;
 use osiris_policy::Profile;
 
+/// Versiones del protocolo MCP que este servidor acepta.
+const SUPPORTED_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+/// Versión que se propone cuando el cliente pide una no soportada (spec MCP).
+const LATEST_VERSION: &str = SUPPORTED_VERSIONS[0];
+
 /// Petición antes de completar `initialize`.
 pub const NOT_INITIALIZED: i64 = -32002;
 
@@ -32,11 +37,6 @@ pub const NOT_INITIALIZED: i64 = -32002;
 /// local); este tope acota memoria por mensaje como defensa básica, no contra
 /// un peer hostil (eso corresponderá al modo HTTP).
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
-
-/// Versiones del protocolo MCP que este servidor acepta.
-const SUPPORTED_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
-/// Versión que se propone cuando el cliente pide una no soportada (spec MCP).
-const LATEST_VERSION: &str = SUPPORTED_VERSIONS[0];
 
 /// Estado del servidor: el ciclo de vida MCP sobre stdio.
 #[derive(Debug)]

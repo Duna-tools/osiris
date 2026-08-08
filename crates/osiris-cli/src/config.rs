@@ -5,12 +5,12 @@
 //! ADR-006: la dirección por defecto es loopback; nunca se expone en red sin
 //! configuración explícita.
 
+const DEFAULT_BIND_ADDR: &str = "127.0.0.1:3000";
+const DEFAULT_LOG_LEVEL: &str = "info";
+
 use serde::Deserialize;
 
 use osiris_policy::Profile;
-
-const DEFAULT_BIND_ADDR: &str = "127.0.0.1:3000";
-const DEFAULT_LOG_LEVEL: &str = "info";
 
 /// Configuración resuelta tras aplicar toda la cadena de precedencia.
 #[derive(Debug, Clone, PartialEq, Eq)]
