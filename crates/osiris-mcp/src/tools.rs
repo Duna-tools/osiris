@@ -87,25 +87,25 @@ fn all_tools() -> Vec<Value> {
         }),
         json!({
             "name": "godot.scene.create_node",
-            "title": "Crear nodo (próximamente)",
+            "title": "Crear nodo",
             "description": "Crea un nodo en la escena activa. Requiere perfil edit.",
             "inputSchema": { "type": "object", "properties": { "path": {"type":"string"}, "type": {"type":"string"}, "name": {"type":"string"} }, "required": ["path","type","name"], "additionalProperties": false }
         }),
         json!({
             "name": "godot.scene.remove_node",
-            "title": "Eliminar nodo (próximamente)",
+            "title": "Eliminar nodo",
             "description": "Elimina un nodo con Undo/Redo. Requiere perfil edit.",
             "inputSchema": { "type": "object", "properties": { "path": {"type":"string"} }, "required": ["path"], "additionalProperties": false }
         }),
         json!({
             "name": "godot.scene.set_property",
-            "title": "Cambiar propiedad (próximamente)",
+            "title": "Cambiar propiedad",
             "description": "Cambia una propiedad de un nodo con Undo/Redo. Requiere perfil edit.",
             "inputSchema": { "type": "object", "properties": { "path": {"type":"string"}, "property": {"type":"string"}, "value": {} }, "required": ["path","property","value"], "additionalProperties": false }
         }),
         json!({
             "name": "godot.scene.save",
-            "title": "Guardar escena (próximamente)",
+            "title": "Guardar escena",
             "description": "Guarda la escena activa. Requiere perfil edit.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),

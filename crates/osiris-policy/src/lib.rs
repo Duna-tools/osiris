@@ -10,7 +10,6 @@ use std::str::FromStr;
 /// Capacidades atómicas del modelo ADR-005.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Capability {
-    GodotSceneRead,
     GodotSceneWrite,
     GodotRun,
 }
