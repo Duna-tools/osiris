@@ -72,11 +72,20 @@ pub fn required(tool_name: &str) -> Option<Capability> {
 /// Devuelve `Authorization` si el perfil no concede la capacidad requerida.
 pub fn check(profile: Profile, tool: &str) -> Result<(), DomainError> {
     match required(tool) {
-        None => Ok(()),
-        Some(cap) if profile.has(cap) => Ok(()),
-        Some(_cap) => Err(DomainError::Authorization(format!(
-            "el perfil {profile:?} no tiene capacidad para {tool}"
-        ))),
+        None => {
+            tracing::trace!(profile = ?profile, tool, allowed = true, "autorización: sin capacidad requerida");
+            Ok(())
+        }
+        Some(cap) if profile.has(cap) => {
+            tracing::debug!(profile = ?profile, tool, capability = ?cap, allowed = true, "autorización concedida");
+            Ok(())
+        }
+        Some(cap) => {
+            tracing::warn!(profile = ?profile, tool, capability = ?cap, allowed = false, "autorización denegada");
+            Err(DomainError::Authorization(format!(
+                "el perfil {profile:?} no tiene capacidad para {tool}"
+            )))
+        }
     }
 }
 

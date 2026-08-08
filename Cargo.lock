@@ -477,6 +477,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -484,6 +485,7 @@ name = "osiris-policy"
 version = "0.1.0"
 dependencies = [
  "osiris-domain",
+ "tracing",
 ]
 
 [[package]]

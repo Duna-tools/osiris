@@ -71,7 +71,6 @@ fn run_server_with_args(args: &[&str], input: &str) -> (Vec<Value>, String, bool
     )
 }
 
-
 #[test]
 fn full_lifecycle_over_stdio() {
     let input = [
@@ -546,7 +545,14 @@ fn run_project_with_custom_scene_and_timeout() {
     ].join("\n");
 
     let (lines, _, ok) = run_server_with_args(
-        &["--ipc-addr", &addr, "--ipc-token-file", &token_path, "--capability-profile", "admin"],
+        &[
+            "--ipc-addr",
+            &addr,
+            "--ipc-token-file",
+            &token_path,
+            "--capability-profile",
+            "admin",
+        ],
         &input,
     );
     assert!(ok);
@@ -557,4 +563,20 @@ fn run_project_with_custom_scene_and_timeout() {
     assert_eq!(r["scene"], "res://levels/test.tscn");
 }
 
-
+#[test]
+fn health_reports_status() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"health"}"#,
+    ].join("
+");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    let h = &lines[1]["result"];
+    assert_eq!(h["ok"], true);
+    assert_eq!(h["version"], "0.1.0");
+    assert_eq!(h["profile"], "read");
+    assert_eq!(h["godot_connected"], false);
+}
