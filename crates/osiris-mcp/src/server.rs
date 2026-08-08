@@ -94,8 +94,15 @@ impl Server {
             )),
             "tools/list" => Some(Response::ok(id, crate::tools::list(self.profile))),
             "health" => Some(self.handle_health(id)),
-            "tools/call" => Some(
-                match crate::tools::call(
+            "tools/call" => {
+                let tool_id = request
+                    .params
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?");
+                let req_id = id.to_string();
+                let started = std::time::Instant::now();
+                let response = match crate::tools::call(
                     &request.params,
                     self.ipc.as_mut(),
                     self.profile,
@@ -103,8 +110,17 @@ impl Server {
                 ) {
                     Ok(result) => Response::ok(id, result),
                     Err(e) => Response::err(id, e),
-                },
-            ),
+                };
+                tracing::debug!(
+                    req_id = %req_id,
+                    tool_id,
+                    fase = "aplicacion",
+                    duracion_us = started.elapsed().as_micros() as u64,
+                    resultado = if response.is_error() { "error" } else { "ok" },
+                    "herramienta ejecutada"
+                );
+                Some(response)
+            }
             _ => Some(Response::err(
                 id,
                 RpcError::new(METHOD_NOT_FOUND, "method not found"),

@@ -98,4 +98,10 @@ impl Response {
                 .to_string()
         })
     }
+
+    /// `true` si la respuesta es un error.
+    #[must_use]
+    pub fn is_error(&self) -> bool {
+        self.error.is_some()
+    }
 }

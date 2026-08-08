@@ -22,8 +22,18 @@ pub fn list(profile: Profile) -> Value {
     let visible: Vec<Value> = all
         .into_iter()
         .filter(|t| osiris_policy::visible_in(profile, t["name"].as_str().unwrap_or("")))
+        .map(with_metadata)
         .collect();
     json!({ "tools": visible })
+}
+
+/// Añade metadatos compartidos (RF-011): versión y permiso de la herramienta.
+fn with_metadata(mut tool: Value) -> Value {
+    let name = tool["name"].as_str().unwrap_or("");
+    let permissions = osiris_policy::required(name).map_or("read", |_| "write");
+    tool["version"] = json!(env!("CARGO_PKG_VERSION"));
+    tool["permissions"] = json!(permissions);
+    tool
 }
 
 #[allow(clippy::too_many_lines)]
@@ -207,5 +217,51 @@ pub fn call(
             INVALID_PARAMS,
             format!("herramienta desconocida: {name}"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn tool_names_are_unique() {
+        let tools = all_tools();
+        let names: HashSet<String> = tools
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(names.len(), tools.len(), "RF-014: nombres duplicados");
+    }
+
+    #[test]
+    fn every_tool_has_name_and_schema() {
+        for t in all_tools() {
+            assert!(t["name"].is_string(), "tool sin name: {t}");
+            assert!(
+                t["inputSchema"].is_object(),
+                "{} sin inputSchema",
+                t["name"]
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_version_and_permissions_present() {
+        let tools = list(Profile::Read)["tools"].as_array().unwrap().clone();
+        for t in tools {
+            assert_eq!(
+                t["version"],
+                env!("CARGO_PKG_VERSION"),
+                "tool {} sin version",
+                t["name"]
+            );
+            assert!(
+                t["permissions"].is_string(),
+                "tool {} sin permissions",
+                t["name"]
+            );
+        }
     }
 }
