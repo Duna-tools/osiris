@@ -41,6 +41,37 @@ fn run_server(input: &str) -> (Vec<Value>, String, bool) {
     )
 }
 
+fn run_server_with_args(args: &[&str], input: &str) -> (Vec<Value>, String, bool) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_osiris-server"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("lanzar osiris-server");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .expect("escribir stdin");
+    let out = child.wait_with_output().expect("esperar al servidor");
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let lines = stdout
+        .lines()
+        .map(|l| {
+            serde_json::from_str::<Value>(l)
+                .unwrap_or_else(|_| panic!("stdout debe ser solo JSON-RPC, línea: {l}"))
+        })
+        .collect();
+    (
+        lines,
+        String::from_utf8(out.stderr).unwrap(),
+        out.status.success(),
+    )
+}
+
+
 #[test]
 fn full_lifecycle_over_stdio() {
     let input = [
@@ -503,3 +534,27 @@ fn validate_script_over_ipc() {
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(r["valid"], true);
 }
+
+#[test]
+fn run_project_with_custom_scene_and_timeout() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.run","arguments":{"scene":"res://levels/test.tscn","timeout_secs":5}}}"#,
+    ].join("\n");
+
+    let (lines, _, ok) = run_server_with_args(
+        &["--ipc-addr", &addr, "--ipc-token-file", &token_path, "--capability-profile", "admin"],
+        &input,
+    );
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["running"], true);
+    assert_eq!(r["scene"], "res://levels/test.tscn");
+}
+
+
