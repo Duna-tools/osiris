@@ -6,17 +6,19 @@
 
 use osiris_domain::DomainError;
 use osiris_ipc_client::IpcClient;
+use osiris_policy::Profile;
 use serde_json::Value;
 
 /// Despacha el `tools/call` hacia la herramienta correcta (local o puente).
 ///
-/// `ipc` es opcional: si la herramienta requiere Godot y no hay conexión,
-/// devuelve `Ipc`. En el futuro pasará por el motor de políticas (ADR-005).
+/// `profile` determina las capacidades del cliente (ADR-005).
 pub fn handle_tool(
     name: &str,
     params: &Value,
     ipc: Option<&mut IpcClient>,
+    profile: Profile,
 ) -> Result<Value, DomainError> {
+    osiris_policy::check(profile, name)?;
     match name {
         "osiris_diagnose" => Ok(osiris_diagnose()),
         "godot_diagnose" => ipc_tool(ipc, "get_version", Value::Null, |client, result| {
@@ -30,6 +32,14 @@ pub fn handle_tool(
         "godot.scene.properties" => ipc_tool(ipc, "get_property", params.clone(), plain_result()),
         "godot.scene.resources" => ipc_tool(ipc, "list_resources", params.clone(), plain_result()),
         "godot.editor.errors" => ipc_tool(ipc, "get_editor_errors", Value::Null, plain_result()),
+        // Escritura: requieren capacidades (check en policy)
+        "godot.scene.create_node" => ipc_tool(ipc, "create_node", params.clone(), plain_result()),
+        "godot.scene.remove_node" => ipc_tool(ipc, "remove_node", params.clone(), plain_result()),
+        "godot.scene.set_property" => ipc_tool(ipc, "set_property", params.clone(), plain_result()),
+        "godot.scene.save" => ipc_tool(ipc, "save_scene", Value::Null, plain_result()),
+        // Ejecución
+        "godot.run" => ipc_tool(ipc, "run_project", Value::Null, plain_result()),
+        "godot.stop" => ipc_tool(ipc, "stop_project", Value::Null, plain_result()),
         _ => Err(DomainError::Validation(format!(
             "herramienta desconocida: {name}"
         ))),

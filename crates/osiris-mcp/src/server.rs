@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 
 use crate::jsonrpc::{INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, Request, Response, RpcError};
 use osiris_ipc_client::IpcClient;
+use osiris_policy::Profile;
 
 /// Petición antes de completar `initialize`.
 pub const NOT_INITIALIZED: i64 = -32002;
@@ -41,13 +42,15 @@ const LATEST_VERSION: &str = SUPPORTED_VERSIONS[0];
 pub struct Server {
     initialized: bool,
     pub ipc: Option<IpcClient>,
+    pub profile: Profile,
 }
 
 impl Server {
-    pub fn new(ipc: Option<IpcClient>) -> Self {
+    pub fn new(ipc: Option<IpcClient>, profile: Profile) -> Self {
         Self {
             initialized: false,
             ipc,
+            profile,
         }
     }
 
@@ -83,9 +86,9 @@ impl Server {
                     "server not initialized: envía initialize primero",
                 ),
             )),
-            "tools/list" => Some(Response::ok(id, crate::tools::list())),
+            "tools/list" => Some(Response::ok(id, crate::tools::list(self.profile))),
             "tools/call" => Some(
-                match crate::tools::call(&request.params, self.ipc.as_mut()) {
+                match crate::tools::call(&request.params, self.ipc.as_mut(), self.profile) {
                     Ok(result) => Response::ok(id, result),
                     Err(e) => Response::err(id, e),
                 },
@@ -182,7 +185,7 @@ mod tests {
     }
 
     fn initialized_server() -> Server {
-        let mut server = Server::new(None);
+        let mut server = Server::new(None, Profile::Read);
         let r = call(
             &mut server,
             r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
@@ -193,7 +196,7 @@ mod tests {
 
     #[test]
     fn initialize_echoes_supported_version() {
-        let mut server = Server::new(None);
+        let mut server = Server::new(None, Profile::Read);
         let r = call(
             &mut server,
             r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
@@ -205,7 +208,7 @@ mod tests {
 
     #[test]
     fn initialize_with_unsupported_version_offers_latest() {
-        let mut server = Server::new(None);
+        let mut server = Server::new(None, Profile::Read);
         let r = call(
             &mut server,
             r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1999-01-01"}}"#,
@@ -215,7 +218,7 @@ mod tests {
 
     #[test]
     fn initialize_without_version_is_domain_validation_error() {
-        let mut server = Server::new(None);
+        let mut server = Server::new(None, Profile::Read);
         let r = call(
             &mut server,
             r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
@@ -227,7 +230,7 @@ mod tests {
 
     #[test]
     fn requests_before_initialize_are_rejected_except_ping() {
-        let mut server = Server::new(None);
+        let mut server = Server::new(None, Profile::Read);
         let r = call(
             &mut server,
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"osiris_diagnose"}}"#,
@@ -264,7 +267,7 @@ mod tests {
 
     #[test]
     fn malformed_json_is_parse_error_with_null_id() {
-        let mut server = Server::new(None);
+        let mut server = Server::new(None, Profile::Read);
         let r = call(&mut server, "esto no es json");
         assert_eq!(r["error"]["code"], -32700);
         assert_eq!(r["id"], Value::Null);
@@ -272,7 +275,7 @@ mod tests {
 
     #[test]
     fn wrong_jsonrpc_version_is_invalid_request() {
-        let mut server = Server::new(None);
+        let mut server = Server::new(None, Profile::Read);
         let r = call(&mut server, r#"{"jsonrpc":"1.0","id":1,"method":"ping"}"#);
         assert_eq!(r["error"]["code"], -32600);
     }

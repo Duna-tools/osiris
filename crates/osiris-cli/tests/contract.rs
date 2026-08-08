@@ -253,6 +253,20 @@ fn godot_diagnose_over_ipc() {
 }
 
 #[test]
+fn write_tool_rejected_on_read_profile() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.scene.create_node","arguments":{"path":".","type":"Node2D","name":"Test"}}}"#,
+    ].join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
+}
+
+#[test]
 fn godot_scene_active_over_ipc() {
     let (addr, _bridge, token_path) = fake_bridge("tok");
     thread::sleep(Duration::from_millis(100));
