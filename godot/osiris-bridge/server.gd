@@ -137,6 +137,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _remove_node(id, msg.get("params", {}))
 		"set_property":
 			return _set_property(id, msg.get("params", {}))
+		"save_scene":
+			return _save_scene(id)
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -264,7 +266,7 @@ func _variant_to_json(v: Variant, depth: int = 4) -> Variant:
 				arr.append(_variant_to_json(v[i], depth - 1))
 			return arr
 		TYPE_DICTIONARY:
-			var d := {}
+			var d: Dictionary = {}
 			for key: Variant in v:
 				d[str(key)] = _variant_to_json(v[key], depth - 1)
 			return d
@@ -286,7 +288,10 @@ func _get_editor_errors(id: Variant) -> Dictionary:
 
 func _resolve_node(params: Dictionary) -> Node:
 	var root: Node = _editor.get_edited_scene_root()
-	var node_path: String = params.get("path", ".")
+	var raw: String = params.get("path", ".")
+	var node_path: String = _validate_path(raw)
+	if node_path == "":
+		return null
 	return root if node_path == "." else root.get_node_or_null(NodePath(node_path))
 
 func _create_node(id: Variant, params: Dictionary) -> Dictionary:
@@ -345,11 +350,34 @@ func _json_to_variant(v: Variant) -> Variant:
 				return Vector2(v.x, v.y)
 		return v  # dict sin tipo, se pasa tal cual (Godot lo convierte)
 	if t == TYPE_ARRAY:
-		var arr := []
+		var arr: Array = []
 		for item: Variant in v:
 			arr.append(_json_to_variant(item))
 		return arr
 	return v
+
+func _save_scene(id: Variant) -> Dictionary:
+	var root: Node = _editor.get_edited_scene_root()
+	if not root:
+		return _error(id, "godot", "no hay escena activa")
+	var path: String = root.scene_file_path
+	if path == "":
+		return _error(id, "godot", "la escena no tiene archivo asociado")
+	var packed := PackedScene.new()
+	var ok: int = packed.pack(root)
+	if ok != OK:
+		return _error(id, "godot", "PackedScene.pack devolvio %d" % ok)
+	ok = ResourceSaver.save(packed, path)
+	if ok != OK:
+		return _error(id, "godot", "ResourceSaver.save devolvio %d" % ok)
+	return _ok(id, {"saved": path})
+
+func _validate_path(raw: String) -> String:
+	if raw == "" or raw == ".":
+		return "."
+	if raw.contains("..") or raw.contains("//") or raw.begins_with("/"):
+		return ""
+	return raw
 
 func _generate_token() -> String:
 	var bytes: PackedByteArray = PackedByteArray()

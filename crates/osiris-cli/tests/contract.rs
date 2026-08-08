@@ -198,6 +198,13 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 id
             )
             .unwrap();
+        } else if msg["op"] == "save_scene" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{},"ok":{{"saved":"res://main.tscn"}}}}"#,
+                id
+            )
+            .unwrap();
         } else {
             writeln!(writer, r#"{{"type":"response","id":{},"ok":{{}}}}"#, id).unwrap();
         }
@@ -393,4 +400,28 @@ fn cache_reuses_read_results() {
     for i in [1, 2] {
         assert_eq!(lines[i]["result"]["isError"], false);
     }
+}
+
+#[test]
+fn save_scene_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot.scene.save"], "edit");
+    assert_eq!(lines.len(), 2);
+    let saved: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(saved["saved"], "res://main.tscn");
+}
+
+#[test]
+fn save_scene_rejected_on_read_profile() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.scene.save"}}"#,
+    ].join("
+");
+    let (lines, _, _) = run_server(&input);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
 }
