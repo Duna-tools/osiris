@@ -219,6 +219,13 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 id
             )
             .unwrap();
+        } else if msg["op"] == "assert_property" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{},"ok":{{"match":true,"actual":100,"expected":100}}}}"#,
+                id
+            )
+            .unwrap();
         } else {
             writeln!(writer, r#"{{"type":"response","id":{},"ok":{{}}}}"#, id).unwrap();
         }
@@ -473,4 +480,16 @@ fn run_tool_rejected_on_edit_profile() {
     let (lines, _, _) = run_server(&input);
     assert_eq!(lines[1]["error"]["code"], -32000);
     assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
+}
+
+#[test]
+fn assert_property_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.assert.property"], "read");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["match"], true);
+    assert_eq!(r["actual"], 100);
 }
