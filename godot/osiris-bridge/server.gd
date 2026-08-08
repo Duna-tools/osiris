@@ -5,6 +5,8 @@ extends RefCounted
 const PROTOCOL_VERSION := 1
 const MAX_LINE_BYTES := 1048576
 const TOKEN_FILE := "user://osiris_ipc_token"
+const MAX_POLL_TIME_MSEC := 5
+const MAX_MESSAGES_PER_POLL := 10
 
 var _tcp: TCPServer = null
 var _peers: Array = []
@@ -40,16 +42,21 @@ func poll() -> void:
 		return
 	_busy = true
 	_accept()
+	var start_time: int = Time.get_ticks_msec()
+	var processed_count: int = 0
 	var to_remove: Array = []
 	for p: StreamPeerTCP in _peers:
 		if p.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 			to_remove.append(p)
 		else:
-			_process_peer(p)
+			processed_count += _process_peer(p)
+			if Time.get_ticks_msec() - start_time >= MAX_POLL_TIME_MSEC or processed_count >= MAX_MESSAGES_PER_POLL:
+				break
 	for p in to_remove:
 		_peers.erase(p)
 		_peer_buffers.erase(p)
 	_busy = false
+
 
 func _accept() -> void:
 	while _tcp and _tcp.is_connection_available():
@@ -57,7 +64,7 @@ func _accept() -> void:
 		if p:
 			_peers.append(p)
 
-func _process_peer(peer: StreamPeerTCP) -> void:
+func _process_peer(peer: StreamPeerTCP) -> int:
 	var buf: String = _peer_buffers.get(peer, "")
 	var avail: int = peer.get_available_bytes()
 	if avail > 0:
@@ -66,24 +73,26 @@ func _process_peer(peer: StreamPeerTCP) -> void:
 	var newline: int = buf.find("\n")
 	if newline < 0:
 		_peer_buffers[peer] = buf
-		return
+		return 0
 
 	var line: String = buf.substr(0, newline).strip_edges()
 	buf = buf.substr(newline + 1)
 	_peer_buffers[peer] = buf
 	if line.length() > MAX_LINE_BYTES:
-		return
+		return 0
 
 	var test_json_conv: JSON = JSON.new()
 	if test_json_conv.parse(line) != OK:
-		return
+		return 0
 	var msg: Dictionary = test_json_conv.get_data()
 	if typeof(msg) != TYPE_DICTIONARY:
-		return
+		return 0
 
 	var response: Variant = _dispatch(msg)
 	if response:
 		_send(peer, response)
+		return 1
+	return 0
 
 func _send(peer: StreamPeerTCP, data: Dictionary) -> void:
 	var txt: String = JSON.stringify(data, "", false)
@@ -143,7 +152,8 @@ func _request(msg: Dictionary) -> Dictionary:
 		"save_scene":
 			return _save_scene(id)
 		"run_project":
-			return _run_project(id)
+			return _run_project(id, msg.get("params", {}))
+
 		"stop_project":
 			return _stop_project(id)
 		"get_run_status":
@@ -404,9 +414,17 @@ func _validate_path(raw: String) -> String:
 		return ""
 	return raw
 
-func _run_project(id: Variant) -> Dictionary:
-	_editor.play_main_scene()
-	return _ok(id, {"running": true})
+func _run_project(id: Variant, params: Dictionary) -> Dictionary:
+	var scene: String = params.get("scene", "")
+	if scene != "":
+		var valid_scene: String = _validate_path(scene)
+		if valid_scene == "":
+			return _error(id, "validation", "ruta de escena inválida: %s" % scene)
+		_editor.play_custom_scene(valid_scene)
+	else:
+		_editor.play_main_scene()
+	return _ok(id, {"running": true, "scene": scene if scene != "" else "main"})
+
 
 func _stop_project(id: Variant) -> Dictionary:
 	_editor.stop_playing_scene()

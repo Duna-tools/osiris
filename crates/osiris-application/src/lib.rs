@@ -125,7 +125,7 @@ fn execute_tool(
         "godot.scene.set_property" => ipc_tool(ipc, "set_property", params.clone(), plain_result()),
         "godot.scene.save" => ipc_tool(ipc, "save_scene", Value::Null, plain_result()),
         // Ejecución
-        "godot.run" => ipc_tool(ipc, "run_project", Value::Null, plain_result()),
+        "godot.run" => ipc_tool(ipc, "run_project", params.clone(), plain_result()),
         "godot.stop" => ipc_tool(ipc, "stop_project", Value::Null, plain_result()),
         "godot.run.status" => ipc_tool(ipc, "get_run_status", Value::Null, plain_result()),
         "godot.assert.property" => ipc_tool(ipc, "assert_property", params.clone(), plain_result()),

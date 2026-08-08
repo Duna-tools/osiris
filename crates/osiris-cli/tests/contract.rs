@@ -201,9 +201,10 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
             )
             .unwrap();
         } else if msg["op"] == "run_project" {
+            let scene = msg["params"]["scene"].as_str().unwrap_or("main");
             writeln!(
                 writer,
-                r#"{{"type":"response","id":{id},"ok":{{"running":true}}}}"#
+                r#"{{"type":"response","id":{id},"ok":{{"running":true,"scene":"{scene}"}}}}"#
             )
             .unwrap();
         } else if msg["op"] == "stop_project" || msg["op"] == "get_run_status" {

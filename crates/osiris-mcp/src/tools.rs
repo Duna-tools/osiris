@@ -114,8 +114,15 @@ fn all_tools() -> Vec<Value> {
         json!({
             "name": "godot.run",
             "title": "Ejecutar proyecto",
-            "description": "Inicia la ejecución del proyecto. Requiere perfil admin.",
-            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+            "description": "Inicia la ejecución del proyecto o de una escena específica. Requiere perfil admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "scene": { "type": "string", "description": "Ruta de la escena opcional a ejecutar (ej: res://main.tscn)." },
+                    "timeout_secs": { "type": "integer", "description": "Tiempo máximo opcional de ejecución antes de auto-detención." }
+                },
+                "additionalProperties": false
+            }
         }),
         json!({
             "name": "godot.stop",
