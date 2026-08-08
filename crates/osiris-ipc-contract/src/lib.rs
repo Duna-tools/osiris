@@ -168,4 +168,39 @@ mod tests {
         assert!(decode_bridge(r#"{"type":"misterio"}"#).is_err());
         assert!(decode_client(r#"{"type":"request","op":"ping"}"#).is_err()); // falta id
     }
+
+    mod prop {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn bridge_message_roundtrip(
+                _id in 0u64..1000,
+                godot in "[a-z0-9.]+",
+            ) {
+                let msg = BridgeMessage::HelloAck { protocol: 1, godot };
+                let encoded = encode(&msg).unwrap();
+                let decoded = decode_bridge(&encoded).unwrap();
+                assert_eq!(msg, decoded);
+            }
+
+            #[test]
+            fn client_request_roundtrip(
+                id in 0u64..1000,
+                op in "[a-z_]+",
+            ) {
+                let msg = ClientMessage::Request { id, op, params: Value::Null };
+                let encoded = encode(&msg).unwrap();
+                let decoded = decode_client(&encoded).unwrap();
+                assert_eq!(msg, decoded);
+            }
+
+            #[test]
+            fn arbitrary_strings_dont_panic(s in ".*") {
+                let _ = decode_bridge(&s);
+                let _ = decode_client(&s);
+            }
+        }
+    }
 }

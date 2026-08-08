@@ -331,4 +331,17 @@ mod tests {
         let json = serde_json::to_string(&RpcError::from_domain(&e)).unwrap();
         assert!(!json.contains("/root/Player"));
     }
+
+    mod prop {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn handle_line_never_panics(s in ".*") {
+                let mut server = Server::new(None, Profile::Read);
+                let _ = server.handle_line(&s);
+            }
+        }
+    }
 }
