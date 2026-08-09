@@ -166,8 +166,53 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _assert_property(id, msg.get("params", {}))
 		"validate_script":
 			return _validate_script(id, msg.get("params", {}))
+		"describe_class":
+			return _describe_class(id, msg.get("params", {}))
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
+
+func _describe_class(id: Variant, params: Dictionary) -> Dictionary:
+	var klass: String = params.get("class", "")
+	if klass == "":
+		return _error(id, "validation", "parámetro 'class' requerido")
+	if not ClassDB.class_exists(klass):
+		return _error(id, "validation", "clase desconocida: %s" % klass)
+	var recursive: bool = params.get("recursive", false)
+	var max_props: int = clampi(params.get("max_props", 300), 1, 2000)
+	var max_methods: int = clampi(params.get("max_methods", 300), 1, 2000)
+
+	var properties: Array = []
+	for p: Dictionary in ClassDB.class_get_property_list(klass, not recursive):
+		if properties.size() >= max_props:
+			break
+		var type_name: String = p.get("class_name", "") if p.get("class_name", "") != "" else type_string(p.get("type", TYPE_NIL))
+		properties.append({"name": p.get("name", ""), "type": type_name})
+
+	var methods: Array = []
+	for m: Dictionary in ClassDB.class_get_method_list(klass, not recursive):
+		if methods.size() >= max_methods:
+			break
+		var args: Array = []
+		for a: Dictionary in m.get("args", []):
+			args.append(a.get("name", ""))
+		methods.append({"name": m.get("name", ""), "args": args})
+
+	var signals: Array = []
+	for s: Dictionary in ClassDB.class_get_signal_list(klass, not recursive):
+		signals.append(s.get("name", ""))
+
+	var constants: Array = []
+	for c: String in ClassDB.class_get_integer_constant_list(klass, not recursive):
+		constants.append({"name": c, "value": ClassDB.class_get_integer_constant(klass, c)})
+
+	return _ok(id, {
+		"class": klass,
+		"inherits": ClassDB.get_parent_class(klass),
+		"properties": properties,
+		"methods": methods,
+		"signals": signals,
+		"constants": constants,
+	})
 
 func _validate_script(id: Variant, params: Dictionary) -> Dictionary:
 	var code: String = params.get("code", "")

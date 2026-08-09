@@ -259,6 +259,13 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"valid":true}}}}"#
             )
             .unwrap();
+        } else if msg["op"] == "describe_class" {
+            let klass = msg["params"]["class"].as_str().unwrap_or("Node");
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"class":"{klass}","inherits":"Node","properties":[{{"name":"position","type":"Vector2"}}],"methods":[{{"name":"queue_free","args":[]}}],"signals":["tree_entered"],"constants":[]}}}}"#
+            )
+            .unwrap();
         } else {
             writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
         }
@@ -530,6 +537,50 @@ fn validate_script_over_ipc() {
     let r: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(r["valid"], true);
+}
+
+#[test]
+fn describe_class_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.describe","arguments":{"class":"Node2D"}}}"#,
+    ].join("\n");
+    let (lines, _, ok) = run_server_with_args(
+        &[
+            "--ipc-addr",
+            &addr,
+            "--ipc-token-file",
+            &token_path,
+            "--capability-profile",
+            "read",
+        ],
+        &input,
+    );
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["class"], "Node2D");
+    assert_eq!(r["inherits"], "Node");
+    assert_eq!(r["properties"][0]["name"], "position");
+    assert_eq!(r["signals"][0], "tree_entered");
+}
+
+#[test]
+fn describe_class_rejected_without_class() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.describe"}}"#,
+    ].join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "ipc");
 }
 
 #[test]

@@ -130,6 +130,12 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Read,
         handler: ipc_plain,
     },
+    ToolSpec {
+        name: "godot.describe",
+        op: Some("describe_class"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
 ];
 
 /// Cache de idempotencia: evita re-ejecutar lecturas repetidas (error-model.md §4).

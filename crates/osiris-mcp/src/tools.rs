@@ -180,6 +180,22 @@ fn all_tools() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "godot.describe",
+            "title": "Describir clase Godot",
+            "description": "Reflexión del ClassDB (ADR-004): herencia, propiedades, métodos, señales y constantes de una clase Godot. Solo lectura.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "class": { "type": "string", "description": "Nombre de la clase (ej: Node2D, CharacterBody2D)." },
+                    "recursive": { "type": "boolean", "description": "Incluir miembros heredados (default false)." },
+                    "max_props": { "type": "integer", "description": "Límite de propiedades devueltas (default 300)." },
+                    "max_methods": { "type": "integer", "description": "Límite de métodos devueltos (default 300)." }
+                },
+                "required": ["class"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -215,7 +231,8 @@ pub fn call(
         | "godot.run.status"
         | "godot.run.output"
         | "godot.assert.property"
-        | "godot.script.validate" => {
+        | "godot.script.validate"
+        | "godot.describe" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))
