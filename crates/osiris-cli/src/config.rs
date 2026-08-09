@@ -19,6 +19,7 @@ pub struct Config {
     pub ipc_token_file: Option<String>,
     pub ipc_timeout_ms: u64,
     pub capability_profile: Profile,
+    pub audit_file: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -28,6 +29,7 @@ struct FileConfig {
     ipc_addr: Option<String>,
     ipc_token_file: Option<String>,
     ipc_timeout_ms: Option<u64>,
+    audit_file: Option<String>,
 }
 
 /// Argumentos CLI ya parseados (todos opcionales salvo `--help`).
@@ -39,6 +41,7 @@ pub struct CliArgs {
     pub ipc_token_file: Option<String>,
     pub ipc_timeout_ms: Option<u64>,
     pub capability_profile: Option<String>,
+    pub audit_file: Option<String>,
     pub help: bool,
 }
 
@@ -52,6 +55,7 @@ Opciones:
   --ipc-token-file <f>  Archivo con el token del puente (o OSIRIS_IPC_TOKEN_FILE)
   --ipc-timeout-ms <n>  Timeout de operaciones IPC en milisegundos (o OSIRIS_IPC_TIMEOUT_MS) [defecto: 3000]
   --capability-profile <p>  Perfil de capacidades: read|edit|admin (o OSIRIS_CAPABILITY_PROFILE) [defecto: read]
+  --audit-file <ruta>   Archivo de auditoría JSONL (o OSIRIS_AUDIT_FILE)
   -h, --help            Muestra esta ayuda";
 
 /// Parsea argumentos ya separados (sin el nombre del programa).
@@ -71,7 +75,8 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             | "--ipc-addr"
             | "--ipc-token-file"
             | "--ipc-timeout-ms"
-            | "--capability-profile" => {
+            | "--capability-profile"
+            | "--audit-file" => {
                 let value = args
                     .get(i + 1)
                     .ok_or_else(|| format!("{flag} requiere un valor"))?
@@ -88,6 +93,7 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                         )
                     }
                     "--capability-profile" => out.capability_profile = Some(value),
+                    "--audit-file" => out.audit_file = Some(value),
                     _ => out.log_level = Some(value),
                 }
                 i += 1;
@@ -113,6 +119,7 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
         ipc_token_file: None,
         ipc_timeout_ms: 3000,
         capability_profile: Profile::Read,
+        audit_file: None,
     };
 
     let config_path = args.config_path.clone().or_else(|| env("OSIRIS_CONFIG"));
@@ -132,6 +139,9 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
         }
         if cfg.ipc_timeout_ms == 3000 {
             cfg.ipc_timeout_ms = file.ipc_timeout_ms.unwrap_or(3000);
+        }
+        if cfg.audit_file.is_none() {
+            cfg.audit_file = file.audit_file;
         }
     }
 
@@ -154,6 +164,9 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
             .parse()
             .map_err(|e| format!("OSIRIS_CAPABILITY_PROFILE: {e}"))?;
     }
+    if let Some(v) = env("OSIRIS_AUDIT_FILE") {
+        cfg.audit_file = Some(v);
+    }
 
     if let Some(v) = &args.log_level {
         cfg.log_level.clone_from(v);
@@ -171,6 +184,9 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
         cfg.capability_profile = v
             .parse()
             .map_err(|e| format!("--capability-profile: {e}"))?;
+    }
+    if let Some(v) = &args.audit_file {
+        cfg.audit_file = Some(v.clone());
     }
 
     Ok(cfg)

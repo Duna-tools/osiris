@@ -6,9 +6,13 @@
 //! La redacción de secretos se implementará cuando exista el primero (token
 //! local, T-024); hoy no hay ningún valor que redactar.
 
+use std::fs::File;
+use std::path::Path;
 use std::str::FromStr;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::layer::{Layer, SubscriberExt};
+use tracing_subscriber::util::SubscriberInitExt;
 
 pub use tracing::{error, info, warn};
 
@@ -36,18 +40,44 @@ fn filter(log_level: &str) -> Result<EnvFilter, String> {
 /// Escribe en **stderr**: stdout es el canal del protocolo MCP por stdio y un
 /// log allí corrompería el framing JSON-RPC.
 ///
+/// Si `audit_file` es `Some`, además persiste los eventos del target
+/// `osiris_audit` (RF-14, TD-004) en ese archivo en formato JSON por línea.
+///
 /// Debe llamarse una sola vez al arrancar el proceso.
 ///
 /// # Errors
-/// Devuelve `Err` si el nivel es inválido o el suscriptor global ya existe.
-pub fn init(log_level: &str) -> Result<(), String> {
+/// Devuelve `Err` si el nivel es inválido, el archivo de auditoría no se puede
+/// abrir, o el suscriptor global ya existe.
+pub fn init(log_level: &str, audit_file: Option<&Path>) -> Result<(), String> {
     let filter = filter(log_level)?;
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
+    let stderr_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
-        .with_target(true)
-        .try_init()
-        .map_err(|e| format!("no se pudo inicializar el log: {e}"))
+        .with_target(true);
+    match audit_file {
+        Some(path) => {
+            let file = File::create(path)
+                .map_err(|e| format!("no se pudo abrir el archivo de auditoría {path:?}: {e}"))?;
+            let audit_layer = tracing_subscriber::fmt::layer()
+                .with_writer(file)
+                .with_target(true)
+                .json()
+                .with_filter(
+                    tracing_subscriber::filter::Targets::new()
+                        .with_target("osiris_audit", tracing::Level::INFO),
+                );
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(stderr_layer)
+                .with(audit_layer)
+                .try_init()
+                .map_err(|e| format!("no se pudo inicializar el log: {e}"))
+        }
+        None => tracing_subscriber::registry()
+            .with(filter)
+            .with(stderr_layer)
+            .try_init()
+            .map_err(|e| format!("no se pudo inicializar el log: {e}")),
+    }
 }
 
 #[cfg(test)]

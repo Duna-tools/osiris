@@ -81,13 +81,24 @@ implementación tomadas durante el desarrollo de Osiris que no están en el vaul
   pruebas con cliente real. No se añade `2026-07-28` a `SUPPORTED_VERSIONS`
   hasta entonces.
 
+### D-008 — Política de plugins (2026-08-09)
+
+- **Decisión:** el registro de herramientas es **estático** (ADR-008, factory
+  method). No hay plugins dinámicos cargables en runtime: añadir una tool es
+  añadir un `ToolSpec` al registro y compilar. Sin consumidor real de plugins
+  dinámicos (nadie registra tools en caliente), un mecanismo de plugins es
+  complejidad especulativa (YAGNI, cierra TD-003).
+- **Consecuencias:** las extensiones se integran compilando contra `domain` +
+  `application`. Si aparece un caso real de plugins dinámicos, se diseñará
+  como una interfaz de registro (factory) expuesta, no como un host de scripts.
+
 ## Deuda técnica
 
 | ID | Ítem | Severidad | Estado |
 |---|---|---|---|
 | TD-001 | Contrato IPC provisional JSON | Media | Resuelto: T-034 confirma JSON (D-002) |
-| TD-002 | Matriz limitada de Godot | Alta | **Cubierta por reflexión**: `godot.describe` (ClassDB) + `osiris.capabilities` (RF-12) hacen el catálogo dinámico; falta integrar clientes MCP reales para validar la surface |
-| TD-003 | Política de plugins no definida | Media | Abierta: RFC antes de habilitar (T-080) |
-| TD-004 | Persistencia de journal no seleccionada | Alta | Abierta: el audit (RF-14) va a stderr; persistencia prototipo cuando haya consumidor |
-| TD-005 | Clientes MCP en CI | Media | Abierta: harness por cliente (sin release aún) |
+| TD-002 | Matriz limitada de Godot | Alta | **Cubierta por reflexión**: `godot.describe` (ClassDB) + `osiris.capabilities` (RF-12) hacen el catálogo dinámico; la surface se validará con clientes MCP reales cuando existan |
+| TD-003 | Política de plugins no definida | Media | **Resuelto 2026-08-09 (D-008)**: sin plugins dinámicos, registro estático |
+| TD-004 | Persistencia de journal no seleccionada | Alta | **Resuelto 2026-08-09**: `--audit-file` persiste eventos `osiris_audit` en JSONL (RF-14) |
+| TD-005 | Clientes MCP en CI | Media | **Resuelto 2026-08-09**: `osiris conformance` (cliente stdio real) en CI; harness por cliente externo cuando exista release |
 | TD-006 | Config `bind_addr` vestigio del modo HTTP | Baja | **Resuelto 2026-08-09**: eliminado; el transporte es stdio, nada escucha TCP |

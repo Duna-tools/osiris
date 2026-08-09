@@ -66,7 +66,10 @@ fn main() -> ExitCode {
         }
     };
 
-    if let Err(e) = osiris_telemetry::init(&cfg.log_level) {
+    if let Err(e) = osiris_telemetry::init(
+        &cfg.log_level,
+        cfg.audit_file.as_deref().map(std::path::Path::new),
+    ) {
         eprintln!("error: {e}");
         return ExitCode::from(2);
     }

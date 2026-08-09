@@ -30,7 +30,7 @@ osiris-ipc-client = { path = "crates/osiris-ipc-client" }
 osiris-mcp = { path = "crates/osiris-mcp" }
 osiris-telemetry = { path = "crates/osiris-telemetry" }
 tracing = { version = "0.1.44", features = ["std"] }
-tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "registry", "json"] }
 
 [profile.release]
 lto = true
