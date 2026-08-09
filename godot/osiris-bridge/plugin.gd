@@ -10,9 +10,6 @@ var _connected_sessions: Dictionary = {}
 var _controller: EditorDebuggerPlugin = null
 var _requested_sessions: Dictionary = {}
 
-func get_controller() -> EditorDebuggerPlugin:
-	return _controller
-
 func _enter_tree() -> void:
 	@warning_ignore("inferred_declaration")
 	randomize()

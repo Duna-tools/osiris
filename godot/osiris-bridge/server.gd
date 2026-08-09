@@ -35,8 +35,6 @@ var _busy: bool = false
 var _token: String = ""
 var _editor: EditorInterface = null
 var _undo_redo: EditorUndoRedoManager = null
-var _run_pid: int = 0
-var _run_log_path: String = ""
 var _run_deadline_ms: int = 0
 var _debug_errors: Array = []
 var _debug_output: Array = []
@@ -89,7 +87,6 @@ func _append_metric_names(data: Variant) -> void:
 	if typeof(data) != TYPE_ARRAY or data.size() < 1:
 		return
 	_debug_metric_names = data[0]
-	print("[OsirisBridge] metric_names recibidos: %d" % _debug_metric_names.size())
 
 func _append_error(data: Variant) -> void:
 	if typeof(data) != TYPE_ARRAY or data.size() < 11:
@@ -913,7 +910,15 @@ func _remove_node(id: Variant, params: Dictionary) -> Dictionary:
 		return _error(id, "godot", "no se puede eliminar la raíz de la escena")
 	var node_name: String = node.name
 	var parent: Node = node.get_parent()
-	node.queue_free()
+	var index: int = node.get_index()
+	# Solo vía undo_redo (patrón _set_property): el commit ejecuta el do_method
+	# que elimina. Un cambio directo + do_method duplicaría (remove_child: parent != this).
+	_undo_redo.create_action("Osiris: eliminar nodo")
+	_undo_redo.add_do_method(parent, "remove_child", node)
+	_undo_redo.add_do_reference(node)
+	_undo_redo.add_undo_method(parent, "add_child", node, true)
+	_undo_redo.add_undo_method(parent, "move_child", node, index)
+	_undo_redo.commit_action()
 	return _ok(id, {"removed": node_name})
 
 func _set_property(id: Variant, params: Dictionary) -> Dictionary:
@@ -1007,7 +1012,6 @@ func _run_project(id: Variant, params: Dictionary) -> Dictionary:
 	_debug_tree.clear()
 	_debug_metric_names.clear()
 	_debug_metrics.clear()
-	_run_pid = 0
 	# Timeout real en segundos, revisado en poll() (no frames).
 	var timeout_secs: int = int(params.get("timeout_secs", 0))
 	_run_deadline_ms = Time.get_ticks_msec() + timeout_secs * 1000 if timeout_secs > 0 else 0
@@ -1015,7 +1019,6 @@ func _run_project(id: Variant, params: Dictionary) -> Dictionary:
 
 
 func _stop_project(id: Variant) -> Dictionary:
-	_run_pid = 0
 	_run_deadline_ms = 0
 	_editor.stop_playing_scene()
 	return _ok(id, {"running": false})

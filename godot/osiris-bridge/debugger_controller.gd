@@ -23,6 +23,3 @@ func request_inspect(ids: Array) -> void:
 func enable_metrics() -> void:
 	if _session:
 		_session.toggle_profiler("performance", true, [])
-
-func has_session() -> bool:
-	return _session != null

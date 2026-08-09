@@ -36,6 +36,15 @@ const MUTATING_OPS: &[&str] = &[
     "save_scene",
     "run_project",
     "stop_project",
+    "scene_apply",
+    "write_script",
+    "call_method",
+    "object_property_set",
+    "connect_signal",
+    "disconnect_signal",
+    "asset_reimport",
+    "resource_assign",
+    "project_settings_set",
 ];
 
 impl std::fmt::Debug for IpcClient {
