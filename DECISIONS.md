@@ -66,6 +66,21 @@ implementación tomadas durante el desarrollo de Osiris que no están en el vaul
 - **Decisión:** el puente recibe el `EditorUndoRedoManager` desde el
   `EditorPlugin.get_undo_redo()` y lo usa para mutaciones (create/set).
 
+### D-007 — MCP 2026-07-28 diferido (2026-08-08)
+
+- **Contexto:** la spec MCP 2026-07-28 es un cambio breaking: elimina
+  `initialize`/`initialized` (estado de sesión), añade `server/discover`,
+  resultados cacheables (`ttlMs`/`cacheScope`) y routing por headers HTTP
+  (ADR-002 del vault nuevo).
+- **Decisión:** nuestro transporte es stdio; la versión del protocolo viaja en
+  headers HTTP en la spec nueva. Sin un cliente real 2026-07-28 para probar el
+  comportamiento stateless, migrar es especulativo y mentiría al cliente
+  (aceptar la versión sin implementar el modo stateless).
+- **Consecuencias:** el servidor sigue en baseline 2025-06-18. Migrar exige:
+  quitar el gate `initialized`, `server/discover`, `ttlMs`/`cacheScope` y
+  pruebas con cliente real. No se añade `2026-07-28` a `SUPPORTED_VERSIONS`
+  hasta entonces.
+
 ## Deuda técnica
 
 | ID | Ítem | Severidad | Condición de cierre |
