@@ -1,13 +1,140 @@
-//! Servicios de aplicación: orquestación, autorización, sesiones, cancelación
-//! y coordinación de transacciones (docs/05-architecture/architecture-description.md §3).
+//! Servicios de aplicación: orquestación, autorización, idempotencia y registro
+//! de herramientas (osiris-godot-mcp-docs: application layer).
 //!
-//! Capa intermedia entre los adaptadores (MCP, IPC) y el dominio. Contiene la
-//! lógica de negocio que no pertenece a ningún adaptador concreto.
+//! Capa entre los adaptadores (MCP, CLI) y el dominio. Depende de `domain`
+//! (errores + port `GodotPort`) y de `policy` (ADR-001: dependencias hacia
+//! adentro). El registro de herramientas (ADR-008) declara nombre, operación
+//! IPC, efecto y handler en un solo lugar.
 
 use osiris_domain::{DomainError, GodotPort};
 use osiris_policy::Profile;
 use serde_json::Value;
 use std::collections::VecDeque;
+
+/// Efecto de una herramienta: distingue lectura (cacheable) de mutación.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    Read,
+    Write,
+}
+
+/// Handler de una herramienta. Recibe el spec para reusar `op` de forma genérica.
+type ToolHandler = fn(&ToolSpec, &Value, Option<&mut dyn GodotPort>) -> Result<Value, DomainError>;
+
+/// Descriptor de herramienta registrada (ADR-008).
+pub struct ToolSpec {
+    pub name: &'static str,
+    /// Operación IPC hacia el puente, o `None` si la tool es local al núcleo.
+    op: Option<&'static str>,
+    effect: Effect,
+    handler: ToolHandler,
+}
+
+/// Registro estático de herramientas (factory method por tool).
+static TOOLS: &[ToolSpec] = &[
+    ToolSpec {
+        name: "osiris_diagnose",
+        op: None,
+        effect: Effect::Read,
+        handler: local_diagnose,
+    },
+    ToolSpec {
+        name: "godot_diagnose",
+        op: Some("get_version"),
+        effect: Effect::Read,
+        handler: godot_diagnose,
+    },
+    ToolSpec {
+        name: "godot.scene.active",
+        op: Some("get_active_scene"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.nodes",
+        op: Some("list_nodes"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.properties",
+        op: Some("get_property"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.resources",
+        op: Some("list_resources"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.editor.errors",
+        op: Some("get_editor_errors"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.create_node",
+        op: Some("create_node"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.remove_node",
+        op: Some("remove_node"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.set_property",
+        op: Some("set_property"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.save",
+        op: Some("save_scene"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.run",
+        op: Some("run_project"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.stop",
+        op: Some("stop_project"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.run.status",
+        op: Some("get_run_status"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.run.output",
+        op: Some("get_run_output"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.assert.property",
+        op: Some("assert_property"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.script.validate",
+        op: Some("validate_script"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+];
 
 /// Cache de idempotencia: evita re-ejecutar lecturas repetidas (error-model.md §4).
 const MAX_CACHE_ENTRIES: usize = 128;
@@ -61,7 +188,11 @@ fn cache_key(tool: &str, params: &Value) -> String {
     )
 }
 
-/// Despacha el `tools/call` hacia la herramienta correcta (local o puente).
+fn find_tool(name: &str) -> Option<&'static ToolSpec> {
+    TOOLS.iter().find(|t| t.name == name)
+}
+
+/// Despacha el `tools/call` hacia la herramienta registrada.
 ///
 /// `profile` determina las capacidades del cliente (ADR-005).
 ///
@@ -75,63 +206,62 @@ pub fn handle_tool(
     cache: &mut IdempotencyCache,
 ) -> Result<Value, DomainError> {
     osiris_policy::check(profile, name)?;
+    let spec = find_tool(name)
+        .ok_or_else(|| DomainError::Validation(format!("herramienta desconocida: {name}")))?;
 
-    let is_write = matches!(
-        name,
-        "godot.scene.create_node"
-            | "godot.scene.remove_node"
-            | "godot.scene.set_property"
-            | "godot.scene.save"
-            | "godot.run"
-            | "godot.stop"
-    );
-
-    if is_write {
-        execute_tool(name, params, ipc)
+    if spec.effect == Effect::Write {
+        (spec.handler)(spec, params, ipc)
     } else {
         let key = cache_key(name, params);
         if let Some(cached) = cache.get(&key) {
             return Ok(cached.clone());
         }
-        let result = execute_tool(name, params, ipc)?;
+        let result = (spec.handler)(spec, params, ipc)?;
         cache.put(key, result.clone());
         Ok(result)
     }
 }
 
-/// Ejecuta la herramienta sin re-verificar la política (ya hecha en `handle_tool`).
-fn execute_tool(
-    name: &str,
+/// Handler genérico: ejecuta la operación IPC y devuelve el resultado plano.
+fn ipc_plain(
+    spec: &ToolSpec,
     params: &Value,
     ipc: Option<&mut dyn GodotPort>,
 ) -> Result<Value, DomainError> {
-    match name {
-        "osiris_diagnose" => Ok(osiris_diagnose()),
-        "godot_diagnose" => ipc_tool(ipc, "get_version", Value::Null, |client, result| {
+    ipc_tool(
+        ipc,
+        spec.op.expect("op requerido"),
+        params.clone(),
+        plain_result(),
+    )
+}
+
+/// Handler local: diagnóstico del propio servidor (sin puente).
+fn local_diagnose(
+    _spec: &ToolSpec,
+    _params: &Value,
+    _ipc: Option<&mut dyn GodotPort>,
+) -> Result<Value, DomainError> {
+    Ok(osiris_diagnose())
+}
+
+/// Handler específico de `godot_diagnose`: incluye la versión del handshake.
+fn godot_diagnose(
+    spec: &ToolSpec,
+    _params: &Value,
+    ipc: Option<&mut dyn GodotPort>,
+) -> Result<Value, DomainError> {
+    ipc_tool(
+        ipc,
+        spec.op.expect("op requerido"),
+        Value::Null,
+        |client, result| {
             serde_json::json!({
                 "godot_version": client.godot_version(),
                 "godot_details": result,
             })
-        }),
-        "godot.scene.active" => ipc_tool(ipc, "get_active_scene", Value::Null, plain_result()),
-        "godot.scene.nodes" => ipc_tool(ipc, "list_nodes", params.clone(), plain_result()),
-        "godot.scene.properties" => ipc_tool(ipc, "get_property", params.clone(), plain_result()),
-        "godot.scene.resources" => ipc_tool(ipc, "list_resources", params.clone(), plain_result()),
-        "godot.editor.errors" => ipc_tool(ipc, "get_editor_errors", Value::Null, plain_result()),
-        "godot.scene.create_node" => ipc_tool(ipc, "create_node", params.clone(), plain_result()),
-        "godot.scene.remove_node" => ipc_tool(ipc, "remove_node", params.clone(), plain_result()),
-        "godot.scene.set_property" => ipc_tool(ipc, "set_property", params.clone(), plain_result()),
-        "godot.scene.save" => ipc_tool(ipc, "save_scene", Value::Null, plain_result()),
-        "godot.run" => ipc_tool(ipc, "run_project", params.clone(), plain_result()),
-        "godot.stop" => ipc_tool(ipc, "stop_project", Value::Null, plain_result()),
-        "godot.run.status" => ipc_tool(ipc, "get_run_status", Value::Null, plain_result()),
-        "godot.run.output" => ipc_tool(ipc, "get_run_output", Value::Null, plain_result()),
-        "godot.assert.property" => ipc_tool(ipc, "assert_property", params.clone(), plain_result()),
-        "godot.script.validate" => ipc_tool(ipc, "validate_script", params.clone(), plain_result()),
-        _ => Err(DomainError::Validation(format!(
-            "herramienta desconocida: {name}"
-        ))),
-    }
+        },
+    )
 }
 
 fn osiris_diagnose() -> Value {
@@ -170,4 +300,40 @@ fn ipc_tool(
         "content": [{ "type": "text", "text": payload.to_string() }],
         "isError": false,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_names_are_unique() {
+        let mut names: Vec<&str> = TOOLS.iter().map(|t| t.name).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), TOOLS.len(), "ADR-008: nombres duplicados");
+    }
+
+    #[test]
+    fn effect_classifies_write_vs_read() {
+        assert_eq!(
+            find_tool("godot.scene.create_node").unwrap().effect,
+            Effect::Write
+        );
+        assert_eq!(
+            find_tool("godot.scene.set_property").unwrap().effect,
+            Effect::Write
+        );
+        assert_eq!(find_tool("godot.run").unwrap().effect, Effect::Write);
+        assert_eq!(
+            find_tool("godot.scene.active").unwrap().effect,
+            Effect::Read
+        );
+        assert_eq!(find_tool("osiris_diagnose").unwrap().effect, Effect::Read);
+    }
+
+    #[test]
+    fn unknown_tool_errors() {
+        assert!(find_tool("no.existe").is_none());
+    }
 }
