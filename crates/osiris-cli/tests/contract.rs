@@ -180,7 +180,6 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
         let (stream, _) = listener.accept().unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         let mut writer = stream;
-        // handshake
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
         writeln!(
@@ -189,7 +188,6 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
         )
         .unwrap();
         writer.flush().unwrap();
-        // first request
         let mut line = String::new();
         reader.read_line(&mut line).unwrap();
         let msg: Value = serde_json::from_str(&line).unwrap();
@@ -325,7 +323,6 @@ fn spawn_bridge_server(
 #[test]
 fn godot_diagnose_over_ipc() {
     let (addr, _bridge, token_path) = fake_bridge("tok");
-    // Small sleep to let the bridge thread start listening
     thread::sleep(Duration::from_millis(100));
     let (lines, _stderr) = spawn_bridge_server(&addr, &token_path, &["godot_diagnose"], "read");
     assert_eq!(lines.len(), 2, "initialize + godot_diagnose");
@@ -399,7 +396,6 @@ fn godot_property_over_ipc() {
 
 #[test]
 fn godot_editor_errors_tools_with_and_without_ipc() {
-    // sin IPC: error
     let input = [
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
         r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
@@ -410,7 +406,6 @@ fn godot_editor_errors_tools_with_and_without_ipc() {
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[1]["error"]["code"], -32000);
 
-    // con IPC: resultado
     let (addr, _bridge, token_path) = fake_bridge("tok");
     thread::sleep(Duration::from_millis(100));
     let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.editor.errors"], "read");
@@ -446,7 +441,6 @@ fn cache_reuses_read_results() {
     );
     assert_eq!(lines.len(), 3, "initialize + 2 godot_diagnose: {lines:?}");
     assert_eq!(lines[0]["result"]["protocolVersion"], "2025-06-18");
-    // Ambas respuestas deben ser OK (la segunda desde cache, sin IPC)
     for i in [1, 2] {
         assert_eq!(lines[i]["result"]["isError"], false);
     }
@@ -481,14 +475,12 @@ fn run_stop_status_tools_with_admin_profile() {
     let (addr, _bridge, token_path) = fake_bridge("tok");
     thread::sleep(Duration::from_millis(100));
 
-    // status (read tool, no capability needed)
     let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.run.status"], "read");
     assert_eq!(lines.len(), 2);
     let status: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(status["running"], false);
 
-    // run + stop need admin profile - test individually
     let (addr2, _b2, tp2) = fake_bridge("tok2");
     thread::sleep(Duration::from_millis(100));
     let (lines, _) = spawn_bridge_server(&addr2, &tp2, &["godot.run"], "admin");

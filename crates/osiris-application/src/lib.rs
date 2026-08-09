@@ -45,8 +45,8 @@ impl IdempotencyCache {
             .find_map(|(k, v)| (k == key).then_some(v))
     }
 
+    /// Inserta o actualiza una entrada; descarta la más antigua al llenar.
     fn put(&mut self, key: String, value: Value) {
-        // dedup: si ya existe, mover al frente (actualiza)
         self.entries.retain(|(k, _)| k != &key);
         if self.entries.len() >= MAX_CACHE_ENTRIES {
             self.entries.pop_front();
@@ -88,23 +88,23 @@ pub fn handle_tool(
     );
 
     if is_write {
-        execute_tool(name, params, ipc, profile)
+        execute_tool(name, params, ipc)
     } else {
         let key = cache_key(name, params);
         if let Some(cached) = cache.get(&key) {
             return Ok(cached.clone());
         }
-        let result = execute_tool(name, params, ipc, profile)?;
+        let result = execute_tool(name, params, ipc)?;
         cache.put(key, result.clone());
         Ok(result)
     }
 }
 
+/// Ejecuta la herramienta sin re-verificar la política (ya hecha en `handle_tool`).
 fn execute_tool(
     name: &str,
     params: &Value,
     ipc: Option<&mut IpcClient>,
-    _profile: Profile, // ya verificado en handle_tool
 ) -> Result<Value, DomainError> {
     match name {
         "osiris_diagnose" => Ok(osiris_diagnose()),
@@ -119,12 +119,10 @@ fn execute_tool(
         "godot.scene.properties" => ipc_tool(ipc, "get_property", params.clone(), plain_result()),
         "godot.scene.resources" => ipc_tool(ipc, "list_resources", params.clone(), plain_result()),
         "godot.editor.errors" => ipc_tool(ipc, "get_editor_errors", Value::Null, plain_result()),
-        // Escritura: requieren capacidades (check en policy)
         "godot.scene.create_node" => ipc_tool(ipc, "create_node", params.clone(), plain_result()),
         "godot.scene.remove_node" => ipc_tool(ipc, "remove_node", params.clone(), plain_result()),
         "godot.scene.set_property" => ipc_tool(ipc, "set_property", params.clone(), plain_result()),
         "godot.scene.save" => ipc_tool(ipc, "save_scene", Value::Null, plain_result()),
-        // Ejecución
         "godot.run" => ipc_tool(ipc, "run_project", params.clone(), plain_result()),
         "godot.stop" => ipc_tool(ipc, "stop_project", Value::Null, plain_result()),
         "godot.run.status" => ipc_tool(ipc, "get_run_status", Value::Null, plain_result()),

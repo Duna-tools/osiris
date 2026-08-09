@@ -132,7 +132,7 @@ impl IpcClient {
                     }
                     return Ok(ok.unwrap_or(Value::Null));
                 }
-                _ => {} // ignore non-matching id responses
+                _ => {}
             }
         }
     }
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn silent_bridge_times_out() {
         let addr = fake_bridge(|mut reader, _stream| {
-            let _ = read_line(&mut reader); // acepta pero no responde jamás
+            let _ = read_line(&mut reader);
             thread::sleep(Duration::from_secs(5));
         });
         let err = IpcClient::connect(&addr, "tok", Duration::from_millis(100)).unwrap_err();
@@ -346,14 +346,11 @@ mod tests {
 
     #[test]
     fn read_call_reconnects_after_bridge_restart() {
-        // Puente falso que acepta 2 conexiones: la 1ª responde error IPC (canal
-        // roto), la 2ª responde ok (puente reiniciado).
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap().to_string();
         let accepts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counter = std::sync::Arc::clone(&accepts);
         thread::spawn(move || {
-            // Conexión 1: handshake ok, luego error Ipc en el request.
             let (s1, _) = listener.accept().unwrap();
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let mut r1 = BufReader::new(s1.try_clone().unwrap());
@@ -381,7 +378,6 @@ mod tests {
                     },
                 ),
             );
-            // Conexión 2: handshake ok + responde el request.
             let (s2, _) = listener.accept().unwrap();
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let mut r2 = BufReader::new(s2.try_clone().unwrap());
@@ -412,8 +408,6 @@ mod tests {
 
     #[test]
     fn mutating_call_does_not_retry_on_broken_channel() {
-        // Puente que responde error Ipc; la op mutable NO debe reconectar
-        // (el puente solo acepta 1 conexión → si reintentara, colgaría).
         let addr = fake_bridge(|mut reader, mut stream| {
             let _ = read_line(&mut reader);
             send(
@@ -424,11 +418,9 @@ mod tests {
                 },
             );
             let _ = read_line(&mut reader);
-            // no respondemos nada → el socket cierra al salir del closure
         });
         let mut client = IpcClient::connect(&addr, "tok", Duration::from_secs(2)).unwrap();
         let err = client.call("set_property", Value::Null).unwrap_err();
-        // Timeout o Ipc, pero NUNCA un segundo intento de conexión.
         assert!(matches!(err, DomainError::Ipc(_) | DomainError::Timeout(_)));
     }
 }

@@ -83,7 +83,6 @@ impl Server {
         tracing::debug!(req_id = %id, method = %request.method, "solicitud recibida");
         match request.method.as_str() {
             "initialize" => Some(self.handle_initialize(id, request)),
-            // El spec MCP permite pings antes de completar la inicialización.
             "ping" => Some(Response::ok(id, json!({}))),
             _ if !self.initialized => Some(Response::err(
                 id,
@@ -279,10 +278,8 @@ mod tests {
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"osiris_diagnose"}}"#,
         );
         assert_eq!(r["error"]["code"], NOT_INITIALIZED);
-        // ping sí está permitido antes de initialize.
         let r = call(&mut server, r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
         assert_eq!(r["result"], json!({}));
-        // y la puerta no se abre sola: sigue rechazando hasta initialize.
         let r = call(
             &mut server,
             r#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#,
@@ -333,7 +330,6 @@ mod tests {
         let r = call(&mut server, &big);
         assert_eq!(r["error"]["code"], -32600);
         assert_eq!(r["error"]["message"], "message too large");
-        // El servidor sigue operativo tras el rechazo.
         let r = call(&mut server, r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
         assert_eq!(r["result"], json!({}));
     }
@@ -355,7 +351,6 @@ mod tests {
 
     #[test]
     fn domain_error_never_leaks_internal_cause() {
-        // FND-004: el payload interno no debe aparecer en el JSON externo.
         let e = DomainError::Internal("ruta secreta /home/x/token".to_string());
         let err = RpcError::from_domain(&e);
         let json = serde_json::to_string(&err).unwrap();

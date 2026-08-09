@@ -177,7 +177,7 @@ mod tests {
     fn unknown_or_malformed_lines_fail() {
         assert!(decode_bridge("no json").is_err());
         assert!(decode_bridge(r#"{"type":"misterio"}"#).is_err());
-        assert!(decode_client(r#"{"type":"request","op":"ping"}"#).is_err()); // falta id
+        assert!(decode_client(r#"{"type":"request","op":"ping"}"#).is_err());
     }
 
     mod prop {

@@ -202,18 +202,15 @@ mod tests {
         std::fs::write(&path, "bind_addr = \"10.0.0.1:1\"\nlog_level = \"warn\"\n").unwrap();
         let path_str = path.to_string_lossy().to_string();
 
-        // Archivo solo.
         let cfg = load(&args(&["--config", &path_str]), no_env).unwrap();
         assert_eq!(cfg.bind_addr, "10.0.0.1:1");
         assert_eq!(cfg.log_level, "warn");
 
-        // Env gana al archivo.
         let env = |k: &str| (k == "OSIRIS_LOG_LEVEL").then(|| "debug".to_string());
         let cfg = load(&args(&["--config", &path_str]), env).unwrap();
         assert_eq!(cfg.bind_addr, "10.0.0.1:1");
         assert_eq!(cfg.log_level, "debug");
 
-        // Arg gana a env.
         let cfg = load(&args(&["--config", &path_str, "--log-level", "error"]), env).unwrap();
         assert_eq!(cfg.log_level, "error");
 
