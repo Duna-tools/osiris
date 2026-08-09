@@ -451,7 +451,7 @@ func _save_scene(id: Variant) -> Dictionary:
 	var ok: int = packed.pack(root)
 	if ok != OK:
 		return _error(id, "godot", "PackedScene.pack devolvio %d" % ok)
-	ok = ResourceSaver.save(packed, path)
+	ok = ResourceSaver.save(packed, path, ResourceSaver.FLAG_REPLACE_SUBRESOURCE_PATHS)
 	if ok != OK:
 		return _error(id, "godot", "ResourceSaver.save devolvio %d" % ok)
 	return _ok(id, {"saved": path})
