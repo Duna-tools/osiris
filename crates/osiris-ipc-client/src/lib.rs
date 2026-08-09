@@ -106,6 +106,8 @@ impl IpcClient {
     /// # Errors
     /// `Timeout`, `Ipc` o el `DomainError` que reporte el puente.
     pub fn call(&mut self, op: &str, params: Value) -> Result<Value, DomainError> {
+        let span = tracing::debug_span!("ipc_call", op, fase = "ipc");
+        let _enter = span.enter();
         match self.call_once(op, params.clone()) {
             Err(DomainError::Ipc(_)) if !MUTATING_OPS.contains(&op) => {
                 tracing::warn!(op, "canal IPC roto en lectura; reconectando");

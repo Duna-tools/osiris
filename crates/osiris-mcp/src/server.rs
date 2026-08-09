@@ -80,7 +80,9 @@ impl Server {
             return None;
         }
         let id = request.id.clone()?;
-        tracing::debug!(req_id = %id, method = %request.method, "solicitud recibida");
+        let span = tracing::debug_span!("mcp_request", req_id = %id, method = %request.method);
+        let _enter = span.enter();
+        tracing::debug!("solicitud recibida");
         match request.method.as_str() {
             "initialize" => Some(self.handle_initialize(id, request)),
             "ping" => Some(Response::ok(id, json!({}))),
