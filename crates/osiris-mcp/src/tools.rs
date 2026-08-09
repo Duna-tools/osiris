@@ -315,6 +315,25 @@ fn all_tools() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "skill.list",
+            "title": "Listar skills",
+            "description": "Lista las skills disponibles (conocimiento declarativo para resolver intenciones).",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "skill.get",
+            "title": "Obtener skill",
+            "description": "Devuelve el detalle de una skill: tools que usa y conocimiento de apoyo.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Nombre de la skill (ver skill.list)." }
+                },
+                "required": ["name"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -359,7 +378,9 @@ pub fn call(
         | "godot.asset.reimport"
         | "godot.resource.assign"
         | "plan.validate"
-        | "plan.execute" => {
+        | "plan.execute"
+        | "skill.list"
+        | "skill.get" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

@@ -192,7 +192,108 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Write,
         handler: plan_execute,
     },
+    ToolSpec {
+        name: "skill.list",
+        op: None,
+        effect: Effect::Read,
+        handler: skill_list,
+    },
+    ToolSpec {
+        name: "skill.get",
+        op: None,
+        effect: Effect::Read,
+        handler: skill_get,
+    },
 ];
+
+/// Skill: conocimiento declarativo de cómo resolver una intención con tools
+/// ya autorizadas (RF-11, vault 07 §5). No añade privilegios.
+struct Skill {
+    name: &'static str,
+    description: &'static str,
+    /// Tools que la skill usa (deben estar en TOOLS).
+    uses: &'static [&'static str],
+    /// Conocimiento de apoyo para el LLM.
+    knowledge: &'static [&'static str],
+}
+
+static SKILLS: &[Skill] = &[
+    Skill {
+        name: "setup_2d_player",
+        description: "Crea un player 2D básico (CharacterBody2D con Sprite2D) en la escena activa.",
+        uses: &[
+            "godot.describe",
+            "godot.scene.create_node",
+            "godot.scene.set_property",
+            "godot.resource.assign",
+            "godot.script.validate",
+            "godot.signal.connect",
+        ],
+        knowledge: &[
+            "CharacterBody2D es la base de movimiento para jugadores 2D",
+            "El movimiento usa velocity + move_and_slide() en _physics_process",
+            "El InputMap requiere acciones de entrada antes de usar Input.get_vector()",
+            "Los scripts se validan con godot.script.validate antes de escribir en disco",
+        ],
+    },
+    Skill {
+        name: "create_ui_button",
+        description: "Crea un botón UI con señal pressed conectada a un método del nodo raíz.",
+        uses: &[
+            "godot.describe",
+            "godot.scene.create_node",
+            "godot.signal.connect",
+        ],
+        knowledge: &[
+            "Button extiende BaseButton; la señal pressed se emite al hacer clic",
+            "El método destino debe existir en el nodo receptor",
+            "Connectar con deferred=false ejecuta la llamada de inmediato",
+        ],
+    },
+];
+
+fn skill_list(
+    _spec: &ToolSpec,
+    _params: &Value,
+    _ipc: Option<&mut dyn GodotPort>,
+    _cache: &mut IdempotencyCache,
+    _profile: Profile,
+) -> Result<Value, DomainError> {
+    let items: Vec<Value> = SKILLS
+        .iter()
+        .map(|s| serde_json::json!({ "name": s.name, "description": s.description }))
+        .collect();
+    Ok(serde_json::json!({
+        "content": [{ "type": "text", "text": serde_json::json!({ "skills": items }).to_string() }],
+        "isError": false,
+    }))
+}
+
+fn skill_get(
+    _spec: &ToolSpec,
+    params: &Value,
+    _ipc: Option<&mut dyn GodotPort>,
+    _cache: &mut IdempotencyCache,
+    _profile: Profile,
+) -> Result<Value, DomainError> {
+    let name = params
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| DomainError::Validation("parámetro 'name' requerido".to_string()))?;
+    let skill = SKILLS
+        .iter()
+        .find(|s| s.name == name)
+        .ok_or_else(|| DomainError::Validation(format!("skill desconocida: {name}")))?;
+    Ok(serde_json::json!({
+        "content": [{ "type": "text", "text": serde_json::json!({
+            "name": skill.name,
+            "description": skill.description,
+            "uses": skill.uses,
+            "knowledge": skill.knowledge,
+        }).to_string() }],
+        "isError": false,
+    }))
+}
 
 /// Cache de idempotencia: evita re-ejecutar lecturas repetidas (error-model.md §4).
 const MAX_CACHE_ENTRIES: usize = 128;

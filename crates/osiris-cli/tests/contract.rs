@@ -895,3 +895,59 @@ fn plan_execute_rejected_on_read_profile() {
     assert_eq!(lines[1]["error"]["code"], -32000);
     assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
 }
+
+#[test]
+fn skill_list_lists_available_skills() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"skill.list"}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let skills = r["skills"].as_array().unwrap();
+    assert!(skills.iter().any(|s| s["name"] == "setup_2d_player"));
+}
+
+#[test]
+fn skill_get_returns_uses_and_knowledge() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"skill.get","arguments":{"name":"setup_2d_player"}}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["name"], "setup_2d_player");
+    assert!(
+        r["uses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|u| u == "godot.describe")
+    );
+    assert!(!r["knowledge"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn skill_get_unknown_skill_errors() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"skill.get","arguments":{"name":"nope"}}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "validation");
+}
