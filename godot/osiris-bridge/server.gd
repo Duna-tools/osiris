@@ -8,6 +8,26 @@ const TOKEN_FILE := "user://osiris_ipc_token"
 const MAX_POLL_TIME_MSEC := 5
 const MAX_MESSAGES_PER_POLL := 10
 
+# Nombres de los 40 monitores estándar de Godot (main/performance.cpp:165).
+const STANDARD_MONITORS := [
+	"time/fps", "time/process", "time/physics_process", "time/navigation_process",
+	"memory/static", "memory/static_max", "memory/msg_buf_max",
+	"object/objects", "object/resources", "object/nodes", "object/orphan_nodes",
+	"raster/total_objects_drawn", "raster/total_primitives_drawn", "raster/total_draw_calls",
+	"video/video_mem", "video/texture_mem", "video/buffer_mem",
+	"physics_2d/active_objects", "physics_2d/collision_pairs", "physics_2d/islands",
+	"physics_3d/active_objects", "physics_3d/collision_pairs", "physics_3d/islands",
+	"audio/driver/output_latency",
+	"navigation/active_maps", "navigation/regions", "navigation/agents", "navigation/links",
+	"navigation/polygons", "navigation/edges", "navigation/edges_merged",
+	"navigation/edges_connected", "navigation/edges_free", "navigation/obstacles",
+	"pipeline/compilations_canvas", "pipeline/compilations_mesh",
+	"pipeline/compilations_surface", "pipeline/compilations_draw",
+	"pipeline/compilations_specialization",
+	"navigation_2d/active_maps", "navigation_2d/regions", "navigation_2d/agents",
+	"navigation_2d/links", "navigation_2d/polygons", "navigation_2d/edges",
+]
+
 var _tcp: TCPServer = null
 var _peers: Array = []
 var _peer_buffers: Dictionary = {}
@@ -20,6 +40,12 @@ var _run_log_path: String = ""
 var _run_deadline_ms: int = 0
 var _debug_errors: Array = []
 var _debug_output: Array = []
+var _debug_tree: Array = []
+var _debug_metric_names: Array = []
+var _debug_metrics: Array = []
+
+func is_running() -> bool:
+	return _editor.is_playing_scene()
 
 ## Callback conectado por plugin.gd a la señal debug_data del ScriptEditorDebugger.
 ## Recibe TODOS los mensajes del juego ya decodificados (vault 18 §4).
@@ -28,6 +54,35 @@ func _on_debug_data(msg: String, data: Variant) -> void:
 		_append_error(data)
 	elif msg == "output":
 		_append_output(data)
+	elif msg == "scene:scene_tree":
+		_append_tree(data)
+	elif msg == "performance:profile_names":
+		_append_metric_names(data)
+	elif msg == "performance:profile_frame":
+		_debug_metrics = data
+
+func _append_tree(data: Variant) -> void:
+	if typeof(data) != TYPE_ARRAY:
+		return
+	# Flat: [child_count, name, type, id, scene_file_path, view_flags] por nodo (DFS).
+	var nodes: Array = []
+	var i: int = 0
+	while i + 5 < data.size():
+		nodes.append({
+			"child_count": data[i],
+			"name": data[i + 1],
+			"type": data[i + 2],
+			"id": data[i + 3],
+			"scene_file": data[i + 4],
+		})
+		i += 6
+	_debug_tree = nodes
+
+func _append_metric_names(data: Variant) -> void:
+	if typeof(data) != TYPE_ARRAY or data.size() < 1:
+		return
+	_debug_metric_names = data[0]
+	print("[OsirisBridge] metric_names recibidos: %d" % _debug_metric_names.size())
 
 func _append_error(data: Variant) -> void:
 	if typeof(data) != TYPE_ARRAY or data.size() < 11:
@@ -221,6 +276,10 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _asset_reimport(id, msg.get("params", {}))
 		"resource_assign":
 			return _resource_assign(id, msg.get("params", {}))
+		"runtime_tree":
+			return _runtime_tree(id)
+		"runtime_metrics":
+			return _runtime_metrics(id)
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -683,6 +742,9 @@ func _run_project(id: Variant, params: Dictionary) -> Dictionary:
 		_debug_errors.clear()
 	if _debug_output:
 		_debug_output.clear()
+	_debug_tree.clear()
+	_debug_metric_names.clear()
+	_debug_metrics.clear()
 	_run_pid = 0
 	# Timeout real en segundos, revisado en poll() (no frames).
 	var timeout_secs: int = int(params.get("timeout_secs", 0))
@@ -706,6 +768,48 @@ func _get_run_output(id: Variant) -> Dictionary:
 	var lines: Array = _debug_output
 	var tail: Array = lines.slice(maxi(lines.size() - 200, 0))
 	return _ok(id, {"output": "\n".join(tail), "running": _editor.is_playing_scene()})
+
+func _runtime_tree(id: Variant) -> Dictionary:
+	# Árbol remoto del juego (flat DFS) capturado vía debug_data. Sin árbol,
+	# devolver el de la escena activa del editor como fallback.
+	if _debug_tree.size() > 0:
+		return _ok(id, {"tree": _debug_tree, "source": "runtime"})
+	var root: Node = _editor.get_edited_scene_root()
+	if not root:
+		return _ok(id, {"tree": [], "source": "none"})
+	var items: Array = []
+	_collect_runtime_nodes(root, items)
+	return _ok(id, {"tree": items, "source": "editor"})
+
+func _collect_runtime_nodes(node: Node, items: Array) -> void:
+	for child: Node in node.get_children():
+		items.append({
+			"child_count": child.get_child_count(),
+			"name": child.name,
+			"type": child.get_class(),
+			"id": child.get_instance_id(),
+			"scene_file": child.scene_file_path,
+		})
+		_collect_runtime_nodes(child, items)
+
+func _runtime_metrics(id: Variant) -> Dictionary:
+	# Monitores del juego (performance:profile_frame). Los nombres estándar de
+	# Godot son fijos y conocidos; los custom llegan vía profile_names.
+	var metrics: Array = []
+	var n: int = _debug_metrics.size()
+	for i in n:
+		var name: String = ""
+		if i < _debug_metric_names.size():
+			name = _debug_metric_names[i]
+		elif i < STANDARD_MONITORS.size():
+			name = STANDARD_MONITORS[i]
+		else:
+			name = "custom_%d" % i
+		metrics.append({
+			"name": name,
+			"value": _debug_metrics[i],
+		})
+	return _ok(id, {"metrics": metrics, "running": _editor.is_playing_scene()})
 
 func _assert_property(id: Variant, params: Dictionary) -> Dictionary:
 	var node: Node = _resolve_node(params)

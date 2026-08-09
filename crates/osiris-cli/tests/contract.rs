@@ -307,6 +307,18 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"property":"texture","resource":"res://icon.svg","assigned":true}}}}"#
             )
             .unwrap();
+            } else if msg["op"] == "runtime_tree" {
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"tree":[{{"child_count":0,"name":"Btn","type":"Button","id":7,"scene_file":""}}],"source":"runtime"}}}}"#
+            )
+            .unwrap();
+            } else if msg["op"] == "runtime_metrics" {
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"metrics":[{{"name":"time/fps","value":60.0}}],"running":true}}}}"#
+            )
+            .unwrap();
             } else {
                 writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
             }
@@ -988,4 +1000,29 @@ fn capabilities_read_profile_excludes_write_tools() {
     let tools = r["tools"].as_array().unwrap();
     assert!(!tools.iter().any(|t| t["name"] == "godot.scene.create_node"));
     assert!(tools.iter().any(|t| t["name"] == "godot.scene.active"));
+}
+
+#[test]
+fn runtime_tree_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.runtime.tree"], "read");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["source"], "runtime");
+    assert_eq!(r["tree"][0]["name"], "Btn");
+    assert_eq!(r["tree"][0]["type"], "Button");
+}
+
+#[test]
+fn runtime_metrics_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.runtime.metrics"], "read");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["metrics"][0]["name"], "time/fps");
+    assert_eq!(r["metrics"][0]["value"], 60.0);
 }

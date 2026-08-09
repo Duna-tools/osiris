@@ -210,6 +210,18 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Read,
         handler: capabilities_handler,
     },
+    ToolSpec {
+        name: "godot.runtime.tree",
+        op: Some("runtime_tree"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.runtime.metrics",
+        op: Some("runtime_metrics"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
 ];
 
 /// Skill: conocimiento declarativo de cómo resolver una intención con tools

@@ -340,6 +340,18 @@ fn all_tools() -> Vec<Value> {
             "description": "Devuelve qué capacidades y tools están disponibles para el perfil, Godot y protocolo actuales (RF-12).",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
+        json!({
+            "name": "godot.runtime.tree",
+            "title": "Árbol remoto del juego",
+            "description": "Árbol de nodos del juego en ejecución (runtime) o de la escena activa del editor como fallback. Solo lectura.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.runtime.metrics",
+            "title": "Métricas de rendimiento",
+            "description": "Monitores de rendimiento del juego en ejecución (FPS, memoria, ...). Solo lectura.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
     ]
 }
 
@@ -387,7 +399,9 @@ pub fn call(
         | "plan.execute"
         | "skill.list"
         | "skill.get"
-        | "osiris.capabilities" => {
+        | "osiris.capabilities"
+        | "godot.runtime.tree"
+        | "godot.runtime.metrics" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))
