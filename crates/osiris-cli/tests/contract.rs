@@ -264,6 +264,13 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                     r#"{{"type":"response","id":{id},"ok":{{"valid":true}}}}"#
                 )
                 .unwrap();
+            } else if msg["op"] == "write_script" {
+                let path = msg["params"]["path"].as_str().unwrap_or("res://x.gd");
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"path":"{path}","written":true,"chars":10}}}}"#
+            )
+            .unwrap();
             } else if msg["op"] == "describe_class" {
                 let klass = msg["params"]["class"].as_str().unwrap_or("Node");
                 writeln!(
@@ -622,6 +629,33 @@ fn validate_script_over_ipc() {
     let r: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(r["valid"], true);
+}
+
+#[test]
+fn write_script_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.script.write"], "edit");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["written"], true);
+    assert_eq!(r["path"], "res://x.gd");
+}
+
+#[test]
+fn write_script_rejected_on_read_profile() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.script.write","arguments":{"path":"res://x.gd","code":"extends Node2D"}}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
 }
 
 #[test]

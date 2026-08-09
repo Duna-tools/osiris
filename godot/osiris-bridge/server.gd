@@ -262,6 +262,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _assert_property(id, msg.get("params", {}))
 		"validate_script":
 			return _validate_script(id, msg.get("params", {}))
+		"write_script":
+			return _write_script(id, msg.get("params", {}))
 		"describe_class":
 			return _describe_class(id, msg.get("params", {}))
 		"list_signals":
@@ -455,6 +457,27 @@ func _describe_class(id: Variant, params: Dictionary) -> Dictionary:
 		"signals": signals,
 		"constants": constants,
 	})
+
+func _write_script(id: Variant, params: Dictionary) -> Dictionary:
+	var path: String = params.get("path", "")
+	if path == "":
+		return _error(id, "validation", "parámetro 'path' requerido")
+	if not path.begins_with("res://") or path.get_extension() != "gd":
+		return _error(id, "validation", "ruta debe ser res://*.gd")
+	var code: String = params.get("code", "")
+	if code == "":
+		return _error(id, "validation", "parámetro 'code' requerido")
+	var script := GDScript.new()
+	script.source_code = code
+	if script.reload() != OK:
+		return _error(id, "validation", "error de sintaxis en el script; valida antes de escribir")
+	var f: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	if not f:
+		return _error(id, "godot", "no se pudo abrir %s para escritura" % path)
+	f.store_string(code)
+	f.close()
+	_editor.get_resource_filesystem().update_file(path)
+	return _ok(id, {"path": path, "written": true, "chars": code.length()})
 
 func _validate_script(id: Variant, params: Dictionary) -> Dictionary:
 	var code: String = params.get("code", "")

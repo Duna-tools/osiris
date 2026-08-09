@@ -181,6 +181,20 @@ fn all_tools() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "godot.script.write",
+            "title": "Escribir script",
+            "description": "Valida y escribe un script GDScript a res://*.gd en disco. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Ruta res:// del script (ej: res://player.gd)." },
+                    "code": { "type": "string", "description": "Código GDScript completo." }
+                },
+                "required": ["path", "code"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.describe",
             "title": "Describir clase Godot",
             "description": "Reflexión del ClassDB (ADR-004): herencia, propiedades, métodos, señales y constantes de una clase Godot. Solo lectura.",
@@ -388,6 +402,7 @@ pub fn call(
         | "godot.run.output"
         | "godot.assert.property"
         | "godot.script.validate"
+        | "godot.script.write"
         | "godot.describe"
         | "godot.signal.list"
         | "godot.signal.connect"

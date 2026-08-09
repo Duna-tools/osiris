@@ -139,6 +139,12 @@ static TOOLS: &[ToolSpec] = &[
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "godot.script.write",
+        op: Some("write_script"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.describe",
         op: Some("describe_class"),
         effect: Effect::Read,
