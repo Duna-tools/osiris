@@ -17,6 +17,43 @@ var _editor: EditorInterface = null
 var _undo_redo: EditorUndoRedoManager = null
 var _run_pid: int = 0
 var _run_log_path: String = ""
+var _run_deadline_ms: int = 0
+var _debug_errors: Array = []
+var _debug_output: Array = []
+
+## Callback conectado por plugin.gd a la señal debug_data del ScriptEditorDebugger.
+## Recibe TODOS los mensajes del juego ya decodificados (vault 18 §4).
+func _on_debug_data(msg: String, data: Variant) -> void:
+	if msg == "error":
+		_append_error(data)
+	elif msg == "output":
+		_append_output(data)
+
+func _append_error(data: Variant) -> void:
+	if typeof(data) != TYPE_ARRAY or data.size() < 11:
+		return
+	# [hr, min, sec, msec, file, func, line, error, error_descr, warning, stack_size, ...]
+	var entry := {
+		"file": data[4],
+		"func": data[5],
+		"line": data[6],
+		"message": data[7],
+		"descr": data[8],
+		"warning": data[9],
+	}
+	_debug_errors.append(entry)
+	if _debug_errors.size() > 200:
+		_debug_errors.pop_front()
+
+func _append_output(data: Variant) -> void:
+	if typeof(data) != TYPE_ARRAY or data.size() < 1:
+		return
+	# [PackedStringArray líneas, PackedInt32Array tipos]
+	var lines: Array = data[0] if typeof(data[0]) == TYPE_PACKED_STRING_ARRAY or typeof(data[0]) == TYPE_ARRAY else []
+	for line in lines:
+		_debug_output.append(String(line))
+		if _debug_output.size() > 500:
+			_debug_output.pop_front()
 
 func start(addr: String, port: int, editor: EditorInterface, undo_redo: EditorUndoRedoManager) -> void:
 	_tcp = TCPServer.new()
@@ -43,6 +80,10 @@ func poll() -> void:
 	if _busy:
 		return
 	_busy = true
+	# Timeout de ejecución real (segundos), no frames (RF-09).
+	if _run_deadline_ms > 0 and Time.get_ticks_msec() >= _run_deadline_ms:
+		_run_deadline_ms = 0
+		_editor.stop_playing_scene()
 	_accept()
 	var start_time: int = Time.get_ticks_msec()
 	var processed_count: int = 0
@@ -500,8 +541,19 @@ func _variant_to_json(v: Variant, depth: int = 4) -> Variant:
 		_: return str(v)
 
 func _get_editor_errors(id: Variant) -> Dictionary:
-	# Godot 4 no expone API pública para leer los errores del editor.
-	return _ok(id, {"errors": [], "note": "Godot no expone errores del editor por API; el listado estará vacío hasta que la API exista"})
+	# Errores reales del juego en ejecución, capturados vía señal debug_data
+	# (RF-09, vault 18 §4). Sin juego corriendo, vacío.
+	var errs: Array = []
+	for e in _debug_errors:
+		errs.append({
+			"file": e.file,
+			"func": e.func,
+			"line": e.line,
+			"message": e.message,
+			"descr": e.descr,
+			"warning": e.warning,
+		})
+	return _ok(id, {"errors": errs, "running": _editor.is_playing_scene()})
 
 func _resolve_node(params: Dictionary) -> Node:
 	var root: Node = _editor.get_edited_scene_root()
@@ -616,56 +668,44 @@ func _validate_path(raw: String) -> String:
 	return raw
 
 func _run_project(id: Variant, params: Dictionary) -> Dictionary:
-	# Un solo proceso: el juego es hijo del editor vía OS.create_process, no
-	# duplicado por play_*_scene (editor_run.cpp lanza otro con debugger).
+	# El editor lanza el juego con --remote-debug y arranca el debugger server
+	# (editor_run_bar.cpp: _run_scene). El EditorDebuggerPlugin captura
+	# errors/output. Sin OS.create_process: un solo proceso, con debugger.
 	var scene: String = params.get("scene", "")
-	var args: PackedStringArray = ["--path", ProjectSettings.globalize_path("res://")]
 	if scene != "":
 		var valid_scene: String = _validate_path(scene)
 		if valid_scene == "":
 			return _error(id, "validation", "ruta de escena inválida: %s" % scene)
-		args.append(valid_scene)
-	# `--quit-after` cuenta frames, no segundos (main.cpp). Solo se pone
-	# timeout si el cliente lo pide; sin timeout, godot.stop detiene (D-002).
+		_editor.play_custom_scene(valid_scene)
+	else:
+		_editor.play_main_scene()
+	if _debug_errors:
+		_debug_errors.clear()
+	if _debug_output:
+		_debug_output.clear()
+	_run_pid = 0
+	# Timeout real en segundos, revisado en poll() (no frames).
 	var timeout_secs: int = int(params.get("timeout_secs", 0))
-	if timeout_secs > 0:
-		# ponytail: fps objetivo del proyecto (application/run/max_fps); si el
-		# juego corre a fps variable el timeout es aproximado. Exacto → timer real.
-		args.append("--quit-after")
-		args.append(str(timeout_secs * Engine.get_frames_per_second()))
-	# Captura de salida del proyecto ejecutado (RF-028/UC-030).
-	_run_log_path = ProjectSettings.globalize_path("user://osiris_run_output.log")
-	args.append("--log-file")
-	args.append(_run_log_path)
-	var pid: int = OS.create_process(OS.get_executable_path(), args, false)
-	if pid == 0:
-		return _error(id, "godot", "no se pudo lanzar el proceso Godot")
-	_run_pid = pid
-	return _ok(id, {"running": true, "scene": scene if scene != "" else "main", "pid": pid})
+	_run_deadline_ms = Time.get_ticks_msec() + timeout_secs * 1000 if timeout_secs > 0 else 0
+	return _ok(id, {"running": true, "scene": scene if scene != "" else "main", "pid": 0})
 
 
 func _stop_project(id: Variant) -> Dictionary:
-	if _run_pid > 0:
-		OS.kill(_run_pid)
-		_run_pid = 0
+	_run_pid = 0
+	_run_deadline_ms = 0
+	_editor.stop_playing_scene()
 	return _ok(id, {"running": false})
 
 func _get_run_status(id: Variant) -> Dictionary:
-	if _run_pid > 0 and not OS.is_process_running(_run_pid):
-		_run_pid = 0
-	return _ok(id, {"running": _run_pid > 0})
+	var running: bool = _editor.is_playing_scene()
+	if not running:
+		_run_deadline_ms = 0
+	return _ok(id, {"running": running})
 
 func _get_run_output(id: Variant) -> Dictionary:
-	if _run_log_path == "":
-		return _ok(id, {"output": "", "running": false})
-	var f: FileAccess = FileAccess.open(_run_log_path, FileAccess.READ)
-	var lines: PackedStringArray = []
-	if f:
-		while not f.eof_reached():
-			lines.append(f.get_line())
-		f.close()
-	var tail: PackedStringArray = lines.slice(maxi(lines.size() - 200, 0))
-	return _ok(id, {"output": "\n".join(tail), "running": _run_pid > 0 and OS.is_process_running(_run_pid)})
+	var lines: Array = _debug_output
+	var tail: Array = lines.slice(maxi(lines.size() - 200, 0))
+	return _ok(id, {"output": "\n".join(tail), "running": _editor.is_playing_scene()})
 
 func _assert_property(id: Variant, params: Dictionary) -> Dictionary:
 	var node: Node = _resolve_node(params)
