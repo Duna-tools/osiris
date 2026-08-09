@@ -11,12 +11,8 @@ use osiris_policy::Profile;
 use serde_json::Value;
 use std::collections::VecDeque;
 
-/// Efecto de una herramienta: distingue lectura (cacheable) de mutación.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Effect {
-    Read,
-    Write,
-}
+/// Reexport del efecto (dominio rico, ADR-001).
+pub use osiris_domain::Effect;
 
 /// Handler de una herramienta. Recibe el spec para reusar `op` de forma genérica.
 type ToolHandler = fn(&ToolSpec, &Value, Option<&mut dyn GodotPort>) -> Result<Value, DomainError>;

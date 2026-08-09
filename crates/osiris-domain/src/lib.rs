@@ -5,6 +5,20 @@
 
 use serde_json::Value;
 
+/// Capacidad atómica del modelo de seguridad (osiris-godot-mcp-docs 05_modelo_de_dominio).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capability {
+    GodotSceneWrite,
+    GodotRun,
+}
+
+/// Efecto de una herramienta: lectura (cacheable) o mutación.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    Read,
+    Write,
+}
+
 /// Puerto que la aplicación necesita para operar sobre Godot (ADR-001).
 ///
 /// Contrato abstracto: el dominio no conoce la implementación (addon bridge,

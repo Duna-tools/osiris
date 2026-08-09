@@ -7,12 +7,8 @@
 use osiris_domain::DomainError;
 use std::str::FromStr;
 
-/// Capacidades atómicas del modelo ADR-005.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Capability {
-    GodotSceneWrite,
-    GodotRun,
-}
+/// Reexport de la capacidad del dominio (ADR-001: dominio rico).
+pub use osiris_domain::Capability;
 
 /// Perfil de capacidades con el que arranca el servidor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
