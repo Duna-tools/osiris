@@ -136,6 +136,24 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Read,
         handler: ipc_plain,
     },
+    ToolSpec {
+        name: "godot.signal.list",
+        op: Some("list_signals"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.signal.connect",
+        op: Some("connect_signal"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.signal.disconnect",
+        op: Some("disconnect_signal"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
 ];
 
 /// Cache de idempotencia: evita re-ejecutar lecturas repetidas (error-model.md §4).

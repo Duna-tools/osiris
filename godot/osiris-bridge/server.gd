@@ -168,8 +168,80 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _validate_script(id, msg.get("params", {}))
 		"describe_class":
 			return _describe_class(id, msg.get("params", {}))
+		"list_signals":
+			return _list_signals(id, msg.get("params", {}))
+		"connect_signal":
+			return _connect_signal(id, msg.get("params", {}))
+		"disconnect_signal":
+			return _disconnect_signal(id, msg.get("params", {}))
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
+
+func _list_signals(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var signals: Array = []
+	for s: Dictionary in node.get_signal_list():
+		var args: Array = []
+		for a: Dictionary in s.get("args", []):
+			var type_name: String = a.get("class_name", "") if a.get("class_name", "") != "" else type_string(a.get("type", TYPE_NIL))
+			args.append({"name": a.get("name", ""), "type": type_name})
+		signals.append({"name": s.get("name", ""), "args": args})
+	return _ok(id, {"path": params.get("path", "."), "signals": signals})
+
+func _connect_signal(id: Variant, params: Dictionary) -> Dictionary:
+	var source: Node = _resolve_node(params)
+	if not source:
+		return _error(id, "godot", "nodo fuente no encontrado")
+	var signal_name: String = params.get("signal", "")
+	if signal_name == "":
+		return _error(id, "validation", "parámetro 'signal' requerido")
+	var target: Node = _resolve_target_node(params)
+	if not target:
+		return _error(id, "godot", "nodo destino no encontrado")
+	var method: String = params.get("method", "")
+	if method == "":
+		return _error(id, "validation", "parámetro 'method' requerido")
+	if source.is_connected(signal_name, Callable(target, method)):
+		return _ok(id, {"already_connected": true})
+	var flags: int = 0
+	if bool(params.get("deferred", false)):
+		flags |= Object.CONNECT_DEFERRED
+	if bool(params.get("oneshot", false)):
+		flags |= Object.CONNECT_ONE_SHOT
+	var err: int = source.connect(signal_name, Callable(target, method), flags)
+	if err != OK:
+		return _error(id, "godot", "no se pudo conectar %s -> %s (%d)" % [signal_name, method, err])
+	return _ok(id, {"connected": true, "signal": signal_name, "target_path": params.get("target_path", "."), "method": method})
+
+func _disconnect_signal(id: Variant, params: Dictionary) -> Dictionary:
+	var source: Node = _resolve_node(params)
+	if not source:
+		return _error(id, "godot", "nodo fuente no encontrado")
+	var signal_name: String = params.get("signal", "")
+	if signal_name == "":
+		return _error(id, "validation", "parámetro 'signal' requerido")
+	var target: Node = _resolve_target_node(params)
+	if not target:
+		return _error(id, "godot", "nodo destino no encontrado")
+	var method: String = params.get("method", "")
+	if method == "":
+		return _error(id, "validation", "parámetro 'method' requerido")
+	if not source.is_connected(signal_name, Callable(target, method)):
+		return _ok(id, {"disconnected": false, "note": "no estaba conectada"})
+	source.disconnect(signal_name, Callable(target, method))
+	return _ok(id, {"disconnected": true, "signal": signal_name, "target_path": params.get("target_path", "."), "method": method})
+
+func _resolve_target_node(params: Dictionary) -> Node:
+	var root: Node = _editor.get_edited_scene_root()
+	var raw: String = params.get("target_path", "")
+	if raw == "":
+		return null
+	var node_path: String = _validate_path(raw)
+	if node_path == "":
+		return null
+	return root.get_node_or_null(NodePath(node_path))
 
 func _describe_class(id: Variant, params: Dictionary) -> Dictionary:
 	var klass: String = params.get("class", "")

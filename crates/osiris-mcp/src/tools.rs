@@ -196,6 +196,52 @@ fn all_tools() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "godot.signal.list",
+            "title": "Señales de un nodo",
+            "description": "Lista las señales de un nodo con sus argumentos.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath." }
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.signal.connect",
+            "title": "Conectar señal",
+            "description": "Conecta la señal de un nodo a un método de otro nodo. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo fuente." },
+                    "signal": { "type": "string", "description": "Nombre de la señal." },
+                    "target_path": { "type": "string", "description": "NodePath del nodo destino." },
+                    "method": { "type": "string", "description": "Método a llamar." },
+                    "deferred": { "type": "boolean", "description": "Conectar diferido (CONNECT_DEFERRED)." },
+                    "oneshot": { "type": "boolean", "description": "Conectar solo una vez (CONNECT_ONESHOT)." }
+                },
+                "required": ["path", "signal", "target_path", "method"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.signal.disconnect",
+            "title": "Desconectar señal",
+            "description": "Desconecta la señal de un nodo de un método. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo fuente." },
+                    "signal": { "type": "string", "description": "Nombre de la señal." },
+                    "target_path": { "type": "string", "description": "NodePath del nodo destino." },
+                    "method": { "type": "string", "description": "Método a desconectar." }
+                },
+                "required": ["path", "signal", "target_path", "method"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -232,7 +278,10 @@ pub fn call(
         | "godot.run.output"
         | "godot.assert.property"
         | "godot.script.validate"
-        | "godot.describe" => {
+        | "godot.describe"
+        | "godot.signal.list"
+        | "godot.signal.connect"
+        | "godot.signal.disconnect" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

@@ -266,6 +266,24 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"class":"{klass}","inherits":"Node","properties":[{{"name":"position","type":"Vector2"}}],"methods":[{{"name":"queue_free","args":[]}}],"signals":["tree_entered"],"constants":[]}}}}"#
             )
             .unwrap();
+        } else if msg["op"] == "list_signals" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"path":".","signals":[{{"name":"tree_entered","args":[]}}]}}}}"#
+            )
+            .unwrap();
+        } else if msg["op"] == "connect_signal" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"connected":true,"signal":"pressed","target_path":"./Btn","method":"on_pressed"}}}}"#
+            )
+            .unwrap();
+        } else if msg["op"] == "disconnect_signal" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"disconnected":true,"signal":"pressed","target_path":"./Btn","method":"on_pressed"}}}}"#
+            )
+            .unwrap();
         } else {
             writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
         }
@@ -581,6 +599,55 @@ fn describe_class_rejected_without_class() {
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[1]["error"]["code"], -32000);
     assert_eq!(lines[1]["error"]["data"]["code"], "ipc");
+}
+
+#[test]
+fn signal_list_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.signal.list"], "read");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["signals"][0]["name"], "tree_entered");
+}
+
+#[test]
+fn signal_connect_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.signal.connect"], "edit");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["connected"], true);
+    assert_eq!(r["signal"], "pressed");
+    assert_eq!(r["method"], "on_pressed");
+}
+
+#[test]
+fn signal_connect_rejected_on_read_profile() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.signal.connect","arguments":{"path":".","signal":"pressed","target_path":"./Btn","method":"on_pressed"}}}"#,
+    ].join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
+}
+
+#[test]
+fn signal_disconnect_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.signal.disconnect"], "edit");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["disconnected"], true);
 }
 
 #[test]

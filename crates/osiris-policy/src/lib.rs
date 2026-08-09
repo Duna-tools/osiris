@@ -56,7 +56,9 @@ pub fn required(tool_name: &str) -> Option<Capability> {
         "godot.scene.create_node"
         | "godot.scene.remove_node"
         | "godot.scene.set_property"
-        | "godot.scene.save" => Some(Capability::GodotSceneWrite),
+        | "godot.scene.save"
+        | "godot.signal.connect"
+        | "godot.signal.disconnect" => Some(Capability::GodotSceneWrite),
         "godot.run" | "godot.stop" => Some(Capability::GodotRun),
         _ => None,
     }
