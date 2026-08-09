@@ -276,6 +276,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _disconnect_signal(id, msg.get("params", {}))
 		"asset_list":
 			return _asset_list(id, msg.get("params", {}))
+		"project_files":
+			return _project_files(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
 		"asset_reimport":
 			return _asset_reimport(id, msg.get("params", {}))
 		"resource_assign":
@@ -352,6 +354,41 @@ func _resolve_target_node(params: Dictionary) -> Node:
 	if node_path == "":
 		return null
 	return root.get_node_or_null(NodePath(node_path))
+
+func _project_files(id: Variant, params: Dictionary) -> Dictionary:
+	# Lista archivos fuente del proyecto vía DirAccess (sin depender del scan del
+	# EditorFileSystem). Excluye .godot/ y addons/ (infra del editor/puente).
+	var max_total: int = clampi(params.get("max_total", 500), 1, 2000)
+	var items: Array = []
+	_collect_project_files("res://", items, max_total)
+	return _ok(id, {"path": "res://", "items": items, "has_more": items.size() >= max_total})
+
+func _collect_project_files(dir_path: String, items: Array, max_total: int) -> void:
+	var dir: DirAccess = DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry: String = dir.get_next()
+	while entry != "":
+		if items.size() >= max_total:
+			break
+		if entry.begins_with(".") or entry == "addons":
+			entry = dir.get_next()
+			continue
+		var full: String = dir_path + entry
+		if dir.current_is_dir():
+			_collect_project_files(full + "/", items, max_total)
+		else:
+			var f: FileAccess = FileAccess.open(full, FileAccess.READ)
+			items.append({
+				"path": full,
+				"extension": entry.get_extension(),
+				"size": f.get_length() if f else 0,
+			})
+			if f:
+				f.close()
+		entry = dir.get_next()
+	dir.list_dir_end()
 
 func _asset_list(id: Variant, params: Dictionary) -> Dictionary:
 	var fs: EditorFileSystem = _editor.get_resource_filesystem()

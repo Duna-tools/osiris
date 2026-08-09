@@ -20,7 +20,7 @@ pub struct IpcClient {
     writer: TcpStream,
     reader: BufReader<TcpStream>,
     next_id: u64,
-    /// Versión de Godot reportada por el puente en el handshake.
+    /// Versión de Godot reportada por el puente en el handshake.-
     pub godot_version: String,
     /// Configuración retenida para reconexión (UC-050).
     addr: String,

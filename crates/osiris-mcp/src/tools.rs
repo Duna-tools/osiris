@@ -285,6 +285,18 @@ fn all_tools() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "godot.project.files",
+            "title": "Archivos del proyecto",
+            "description": "Lista archivos fuente del proyecto (DirAccess, excluye .godot/ y addons/) con tamaño. Solo lectura.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "max_total": { "type": "integer", "description": "Máximo de archivos (default 500)." }
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.asset.reimport",
             "title": "Reimportar asset",
             "description": "Fuerza la reimportación de un archivo. Requiere perfil edit.",
@@ -424,6 +436,7 @@ pub fn call(
         | "godot.signal.connect"
         | "godot.signal.disconnect"
         | "godot.asset.list"
+        | "godot.project.files"
         | "godot.asset.reimport"
         | "godot.resource.assign"
         | "plan.validate"
