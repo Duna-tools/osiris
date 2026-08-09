@@ -16,6 +16,10 @@ func request_tree() -> void:
 	if _session:
 		_session.send_message("scene:request_scene_tree", [])
 
+func request_inspect(ids: Array) -> void:
+	if _session:
+		_session.send_message("scene:inspect_objects", [ids, false])
+
 func enable_metrics() -> void:
 	if _session:
 		_session.toggle_profiler("performance", true, [])

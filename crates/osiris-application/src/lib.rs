@@ -270,6 +270,12 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Read,
         handler: ipc_plain,
     },
+    ToolSpec {
+        name: "debug.inspect",
+        op: Some("debug_inspect"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
 ];
 
 /// Skill: conocimiento declarativo de cómo resolver una intención con tools

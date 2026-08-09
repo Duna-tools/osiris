@@ -370,6 +370,12 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"metrics":[{{"name":"time/fps","value":60.0}}],"running":true}}}}"#
             )
             .unwrap();
+            } else if msg["op"] == "debug_inspect" {
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"id":7,"inspect":[{{"id":7,"class":"Button","properties":{{"text":"Click"}}}}]}}}}"#
+            )
+            .unwrap();
             } else {
                 writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
             }
@@ -520,17 +526,16 @@ fn project_files_over_ipc() {
     assert_eq!(r["items"][0]["extension"], "tscn");
     assert_eq!(r["items"][0]["size"], 123);
 }
-
 #[test]
-fn project_settings_get_over_ipc() {
+fn debug_inspect_over_ipc() {
     let (addr, _bridge, token_path) = fake_bridge("tok");
     thread::sleep(Duration::from_millis(100));
-    let (lines, _) =
-        spawn_bridge_server(&addr, &token_path, &["godot.project.settings.get"], "read");
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["debug.inspect"], "read");
     assert_eq!(lines.len(), 2);
     let r: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert_eq!(r["settings"]["application/config/name"], "My Game");
+    assert_eq!(r["id"], 7);
+    assert_eq!(r["inspect"][0]["class"], "Button");
 }
 
 #[test]

@@ -10,12 +10,16 @@ var _connected_sessions: Dictionary = {}
 var _controller: EditorDebuggerPlugin = null
 var _requested_sessions: Dictionary = {}
 
+func get_controller() -> EditorDebuggerPlugin:
+	return _controller
+
 func _enter_tree() -> void:
 	@warning_ignore("inferred_declaration")
 	randomize()
 	_server = preload("res://addons/osiris-bridge/server.gd").new()
 	_server.start(BIND_ADDR, BIND_PORT, get_editor_interface(), get_undo_redo())
 	_controller = preload("res://addons/osiris-bridge/debugger_controller.gd").new()
+	_server.set_controller(_controller)
 	add_debugger_plugin(_controller)
 	if FileAccess.file_exists("res://scenes/main.tscn"):
 		get_editor_interface().open_scene_from_path("res://scenes/main.tscn")

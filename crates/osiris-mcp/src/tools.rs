@@ -467,6 +467,19 @@ fn all_tools() -> Vec<Value> {
             "description": "Monitores de rendimiento del juego en ejecución (FPS, memoria, ...). Solo lectura.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
+        json!({
+            "name": "debug.inspect",
+            "title": "Inspeccionar objeto en runtime",
+            "description": "Inspecciona un objeto del juego en ejecución por id del árbol remoto (o path) vía el debugger. Solo lectura.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "integer", "description": "Id del objeto (del árbol remoto)." },
+                    "path": { "type": "string", "description": "Nombre del nodo (alternativo al id)." }
+                },
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -524,7 +537,8 @@ pub fn call(
         | "skill.get"
         | "osiris.capabilities"
         | "godot.runtime.tree"
-        | "godot.runtime.metrics" => {
+        | "godot.runtime.metrics"
+        | "debug.inspect" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

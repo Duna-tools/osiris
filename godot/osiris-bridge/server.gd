@@ -43,6 +43,11 @@ var _debug_output: Array = []
 var _debug_tree: Array = []
 var _debug_metric_names: Array = []
 var _debug_metrics: Array = []
+var _debug_inspect: Array = []
+var _controller: Object = null
+
+func set_controller(c: Object) -> void:
+	_controller = c
 
 func is_running() -> bool:
 	return _editor.is_playing_scene()
@@ -60,6 +65,8 @@ func _on_debug_data(msg: String, data: Variant) -> void:
 		_append_metric_names(data)
 	elif msg == "performance:profile_frame":
 		_debug_metrics = data
+	elif msg == "scene:inspect_objects":
+		_debug_inspect = data
 
 func _append_tree(data: Variant) -> void:
 	if typeof(data) != TYPE_ARRAY:
@@ -296,6 +303,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _runtime_tree(id)
 		"runtime_metrics":
 			return _runtime_metrics(id)
+		"debug_inspect":
+			return _handle_debug_inspect(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -1044,6 +1053,48 @@ func _collect_runtime_nodes(node: Node, items: Array) -> void:
 			"scene_file": child.scene_file_path,
 		})
 		_collect_runtime_nodes(child, items)
+
+func _handle_debug_inspect(id: Variant, params: Dictionary) -> Dictionary:
+	var target_id: int = int(params.get("id", 0))
+	var path: String = params.get("path", "")
+	if target_id == 0 and path != "":
+		target_id = _tree_id_for_path(path)
+	if target_id == 0:
+		return _error(id, "validation", "parámetro 'id' o 'path' requerido (id del árbol remoto)")
+	if _controller:
+		_controller.request_inspect([target_id])
+		# La respuesta llega por debug_data en el siguiente poll; devolvemos lo
+		# último capturado para ese id.
+	var items: Array = []
+	for obj in _debug_inspect:
+		if typeof(obj) != TYPE_ARRAY or obj.size() < 1:
+			continue
+		if int(obj[0]) == target_id:
+			items.append(_inspect_obj_to_json(obj))
+	if items.size() == 0:
+		return _ok(id, {"id": target_id, "inspect": [], "note": "petición enviada; consulta de nuevo si aún no llegó"})
+	return _ok(id, {"id": target_id, "inspect": items})
+
+func _tree_id_for_path(path: String) -> int:
+	# El árbol remoto no guarda paths; resolvemos por nombre del nodo raíz del
+	# árbol capturado (el id del primer nodo cuyo nombre coincide).
+	for node in _debug_tree:
+		if node.get("name", "") == path or node.get("name", "") == path.get_file():
+			return int(node.get("id", 0))
+	return 0
+
+## Convierte un objeto inspeccionado `[id, class_name, props]` a JSON legible.
+func _inspect_obj_to_json(obj: Array) -> Dictionary:
+	var props: Dictionary = {}
+	if obj.size() >= 3 and typeof(obj[2]) == TYPE_ARRAY:
+		for p in obj[2]:
+			if typeof(p) == TYPE_ARRAY and p.size() >= 6:
+				props[p[0]] = _variant_to_json(p[5])
+	return {
+		"id": obj[0],
+		"class": obj[1],
+		"properties": props,
+	}
 
 func _runtime_metrics(id: Variant) -> Dictionary:
 	# Monitores del juego (performance:profile_frame). Los nombres estándar de
