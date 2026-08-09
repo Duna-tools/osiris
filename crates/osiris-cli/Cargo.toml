@@ -13,6 +13,10 @@ categories.workspace = true
 name = "osiris-server"
 path = "src/main.rs"
 
+[[bin]]
+name = "osiris"
+path = "src/bin/osiris.rs"
+
 [dependencies]
 osiris-domain = { workspace = true }
 osiris-application = { workspace = true }
@@ -23,6 +27,4 @@ osiris-telemetry = { workspace = true }
 tracing = { workspace = true }
 toml = "1.1.4"
 serde = { version = "1.0.229", features = ["derive"] }
-
-[dev-dependencies]
 serde_json = "1.0.151"
