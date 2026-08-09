@@ -1,9 +1,34 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use osiris_ipc_client::IpcClient;
+use osiris_ipc_contract::{BridgeMessage, ClientMessage, encode};
 use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::time::Duration;
+
+fn bench_codec(c: &mut Criterion) {
+    let request = ClientMessage::Request {
+        id: 42,
+        op: "set_property".to_string(),
+        params: json!({"path": "Hero", "property": "position", "value": {"x": 1.5, "y": 2.5}}),
+    };
+    let response = BridgeMessage::ok(42, json!({"path": "Hero", "value": {"x": 1.5, "y": 2.5}}));
+
+    c.bench_function("encode_request", |b| {
+        b.iter(|| std::hint::black_box(encode(&request).unwrap()));
+    });
+    c.bench_function("encode_response", |b| {
+        b.iter(|| std::hint::black_box(encode(&response).unwrap()));
+    });
+    c.bench_function("decode_request", |b| {
+        let line = encode(&request).unwrap();
+        b.iter(|| std::hint::black_box(osiris_ipc_contract::decode_client(&line).unwrap()));
+    });
+    c.bench_function("decode_response", |b| {
+        let line = encode(&response).unwrap();
+        b.iter(|| std::hint::black_box(osiris_ipc_contract::decode_bridge(&line).unwrap()));
+    });
+}
 
 fn bench_handshake_and_call(c: &mut Criterion) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -54,5 +79,5 @@ fn bench_handshake_and_call(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_handshake_and_call);
+criterion_group!(benches, bench_codec, bench_handshake_and_call);
 criterion_main!(benches);
