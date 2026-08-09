@@ -247,6 +247,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _remove_node(id, msg.get("params", {}))
 		"set_property":
 			return _set_property(id, msg.get("params", {}))
+		"call_method":
+			return _call_method(id, msg.get("params", {}))
 		"save_scene":
 			return _save_scene(id)
 		"run_project":
@@ -644,6 +646,28 @@ func _resolve_node(params: Dictionary) -> Node:
 	if node_path == "":
 		return null
 	return root if node_path == "." else root.get_node_or_null(NodePath(node_path))
+
+func _call_method(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var method: String = params.get("method", "")
+	if method == "":
+		return _error(id, "validation", "parámetro 'method' requerido")
+	var raw_args: Array = params.get("args", [])
+	var args: Array = []
+	for a in raw_args:
+		args.append(_json_to_variant(a))
+	var result: Variant
+	if args.size() == 0:
+		result = node.call(method)
+	else:
+		result = node.callv(method, args)
+	return _ok(id, {
+		"path": params.get("path", "."),
+		"method": method,
+		"result": _variant_to_json(result),
+	})
 
 func _create_node(id: Variant, params: Dictionary) -> Dictionary:
 	var parent: Node = _resolve_node(params)

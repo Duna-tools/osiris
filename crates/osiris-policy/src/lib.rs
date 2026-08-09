@@ -71,6 +71,7 @@ pub fn required(tool_name: &str) -> Option<Capability> {
         | "godot.asset.reimport"
         | "godot.resource.assign"
         | "godot.script.write"
+        | "object.call"
         | "plan.execute" => Some(Capability::GodotSceneWrite),
         "godot.run" | "godot.stop" => Some(Capability::GodotRun),
         _ => None,

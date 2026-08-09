@@ -116,6 +116,21 @@ fn all_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "path": {"type":"string"}, "property": {"type":"string"}, "value": {} }, "required": ["path","property","value"], "additionalProperties": false }
         }),
         json!({
+            "name": "object.call",
+            "title": "Llamar método",
+            "description": "Invoca un método de un nodo con argumentos. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo." },
+                    "method": { "type": "string", "description": "Nombre del método." },
+                    "args": { "type": "array", "description": "Argumentos (convertidos a Variant)." }
+                },
+                "required": ["path", "method"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.scene.save",
             "title": "Guardar escena",
             "description": "Guarda la escena activa. Requiere perfil edit.",
@@ -395,6 +410,7 @@ pub fn call(
         | "godot.scene.create_node"
         | "godot.scene.remove_node"
         | "godot.scene.set_property"
+        | "object.call"
         | "godot.scene.save"
         | "godot.run"
         | "godot.stop"

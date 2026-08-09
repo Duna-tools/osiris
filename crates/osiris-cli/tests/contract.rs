@@ -227,6 +227,13 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"property":"position","value":{{"x":10.0,"y":20.0}}}}}}"#
             )
             .unwrap();
+            } else if msg["op"] == "call_method" {
+                let method = msg["params"]["method"].as_str().unwrap_or("");
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"path":".","method":"{method}","result":{{"x":1,"y":2}}}}}}"#
+            )
+            .unwrap();
             } else if msg["op"] == "save_scene" {
                 writeln!(
                     writer,
@@ -711,6 +718,33 @@ fn signal_list_over_ipc() {
     let r: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(r["signals"][0]["name"], "tree_entered");
+}
+
+#[test]
+fn object_call_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["object.call"], "edit");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["result"]["x"], 1);
+    assert_eq!(r["result"]["y"], 2);
+}
+
+#[test]
+fn object_call_rejected_on_read_profile() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"object.call","arguments":{"path":".","method":"queue_free"}}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
 }
 
 #[test]

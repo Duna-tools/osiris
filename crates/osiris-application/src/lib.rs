@@ -97,6 +97,12 @@ static TOOLS: &[ToolSpec] = &[
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "object.call",
+        op: Some("call_method"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.scene.save",
         op: Some("save_scene"),
         effect: Effect::Write,
