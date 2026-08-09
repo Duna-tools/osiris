@@ -471,19 +471,15 @@ func _validate_path(raw: String) -> String:
 	return raw
 
 func _run_project(id: Variant, params: Dictionary) -> Dictionary:
+	# Un solo proceso: el juego es hijo del editor vía OS.create_process, no
+	# duplicado por play_*_scene (editor_run.cpp lanza otro con debugger).
 	var scene: String = params.get("scene", "")
+	var args: PackedStringArray = ["--path", ProjectSettings.globalize_path("res://")]
 	if scene != "":
 		var valid_scene: String = _validate_path(scene)
 		if valid_scene == "":
 			return _error(id, "validation", "ruta de escena inválida: %s" % scene)
-		_editor.play_custom_scene(valid_scene)
-	else:
-		_editor.play_main_scene()
-	# Captura de salida del proyecto ejecutado (RF-028/UC-030).
-	_run_log_path = ProjectSettings.globalize_path("user://osiris_run_output.log")
-	var project_dir: String = ProjectSettings.globalize_path("res://")
-	var godot_bin: String = OS.get_executable_path()
-	var args: PackedStringArray = ["--path", project_dir]
+		args.append(valid_scene)
 	# `--quit-after` cuenta frames, no segundos (main.cpp). Solo se pone
 	# timeout si el cliente lo pide; sin timeout, godot.stop detiene (D-002).
 	var timeout_secs: int = int(params.get("timeout_secs", 0))
@@ -492,11 +488,11 @@ func _run_project(id: Variant, params: Dictionary) -> Dictionary:
 		# juego corre a fps variable el timeout es aproximado. Exacto → timer real.
 		args.append("--quit-after")
 		args.append(str(timeout_secs * Engine.get_frames_per_second()))
-	if scene != "":
-		args.append(scene)
+	# Captura de salida del proyecto ejecutado (RF-028/UC-030).
+	_run_log_path = ProjectSettings.globalize_path("user://osiris_run_output.log")
 	args.append("--log-file")
 	args.append(_run_log_path)
-	var pid: int = OS.create_process(godot_bin, args, false)
+	var pid: int = OS.create_process(OS.get_executable_path(), args, false)
 	if pid == 0:
 		return _error(id, "godot", "no se pudo lanzar el proceso Godot")
 	_run_pid = pid
@@ -507,15 +503,16 @@ func _stop_project(id: Variant) -> Dictionary:
 	if _run_pid > 0:
 		OS.kill(_run_pid)
 		_run_pid = 0
-	_editor.stop_playing_scene()
 	return _ok(id, {"running": false})
 
 func _get_run_status(id: Variant) -> Dictionary:
-	return _ok(id, {"running": _run_pid > 0 or _editor.is_playing_scene()})
+	if _run_pid > 0 and not OS.is_process_running(_run_pid):
+		_run_pid = 0
+	return _ok(id, {"running": _run_pid > 0})
 
 func _get_run_output(id: Variant) -> Dictionary:
 	if _run_log_path == "":
-		return _ok(id, {"output": "", "running": _get_run_status(id)["running"]})
+		return _ok(id, {"output": "", "running": false})
 	var f: FileAccess = FileAccess.open(_run_log_path, FileAccess.READ)
 	var lines: PackedStringArray = []
 	if f:
@@ -523,7 +520,7 @@ func _get_run_output(id: Variant) -> Dictionary:
 			lines.append(f.get_line())
 		f.close()
 	var tail: PackedStringArray = lines.slice(maxi(lines.size() - 200, 0))
-	return _ok(id, {"output": "\n".join(tail), "running": _get_run_status(id)["running"]})
+	return _ok(id, {"output": "\n".join(tail), "running": _run_pid > 0 and OS.is_process_running(_run_pid)})
 
 func _assert_property(id: Variant, params: Dictionary) -> Dictionary:
 	var node: Node = _resolve_node(params)
