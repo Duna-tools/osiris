@@ -455,6 +455,7 @@ dependencies = [
  "osiris-domain",
  "osiris-ipc-contract",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]

@@ -13,6 +13,7 @@ categories.workspace = true
 osiris-domain.workspace = true
 osiris-ipc-contract = { workspace = true }
 serde_json = "1.0.151"
+tracing.workspace = true
 
 [dev-dependencies]
 criterion = "0.8.2"
