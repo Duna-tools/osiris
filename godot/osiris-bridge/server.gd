@@ -15,6 +15,8 @@ var _busy: bool = false
 var _token: String = ""
 var _editor: EditorInterface = null
 var _undo_redo: EditorUndoRedoManager = null
+var _run_pid: int = 0
+var _run_log_path: String = ""
 
 func start(addr: String, port: int, editor: EditorInterface, undo_redo: EditorUndoRedoManager) -> void:
 	_tcp = TCPServer.new()
@@ -158,6 +160,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _stop_project(id)
 		"get_run_status":
 			return _get_run_status(id)
+		"get_run_output":
+			return _get_run_output(id)
 		"assert_property":
 			return _assert_property(id, msg.get("params", {}))
 		"validate_script":
@@ -423,15 +427,43 @@ func _run_project(id: Variant, params: Dictionary) -> Dictionary:
 		_editor.play_custom_scene(valid_scene)
 	else:
 		_editor.play_main_scene()
-	return _ok(id, {"running": true, "scene": scene if scene != "" else "main"})
+	# Captura de salida del proyecto ejecutado (RF-028/UC-030).
+	_run_log_path = ProjectSettings.globalize_path("user://osiris_run_output.log")
+	var project_dir: String = ProjectSettings.globalize_path("res://")
+	var godot_bin: String = OS.get_executable_path()
+	var args: PackedStringArray = ["--path", project_dir, "--quit-after", "600"]
+	if scene != "":
+		args.append(scene)
+	args.append("--log-file")
+	args.append(_run_log_path)
+	var pid: int = OS.create_process(godot_bin, args, false)
+	if pid == 0:
+		return _error(id, "godot", "no se pudo lanzar el proceso Godot")
+	_run_pid = pid
+	return _ok(id, {"running": true, "scene": scene if scene != "" else "main", "pid": pid})
 
 
 func _stop_project(id: Variant) -> Dictionary:
+	if _run_pid > 0:
+		OS.kill(_run_pid)
+		_run_pid = 0
 	_editor.stop_playing_scene()
 	return _ok(id, {"running": false})
 
 func _get_run_status(id: Variant) -> Dictionary:
-	return _ok(id, {"running": _editor.is_playing_scene()})
+	return _ok(id, {"running": _run_pid > 0 or _editor.is_playing_scene()})
+
+func _get_run_output(id: Variant) -> Dictionary:
+	if _run_log_path == "":
+		return _ok(id, {"output": "", "running": _get_run_status(id)["running"]})
+	var f: FileAccess = FileAccess.open(_run_log_path, FileAccess.READ)
+	var lines: PackedStringArray = []
+	if f:
+		while not f.eof_reached():
+			lines.append(f.get_line())
+		f.close()
+	var tail: PackedStringArray = lines.slice(maxi(lines.size() - 200, 0))
+	return _ok(id, {"output": "\n".join(tail), "running": _get_run_status(id)["running"]})
 
 func _assert_property(id: Variant, params: Dictionary) -> Dictionary:
 	var node: Node = _resolve_node(params)
