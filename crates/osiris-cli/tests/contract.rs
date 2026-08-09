@@ -951,3 +951,41 @@ fn skill_get_unknown_skill_errors() {
     assert_eq!(lines[1]["error"]["code"], -32000);
     assert_eq!(lines[1]["error"]["data"]["code"], "validation");
 }
+
+#[test]
+fn capabilities_catalog_reflects_profile() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["osiris.capabilities"], "edit");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["profile"], "edit");
+    assert_eq!(r["godot_connected"], true);
+    let caps = r["capabilities"].as_array().unwrap();
+    assert!(caps.iter().any(|c| c == "GodotSceneWrite"));
+    assert!(!caps.iter().any(|c| c == "GodotRun"));
+    let tools = r["tools"].as_array().unwrap();
+    assert!(tools.iter().any(|t| t["name"] == "godot.scene.create_node"));
+    assert!(tools.iter().any(|t| t["name"] == "skill.get"));
+}
+
+#[test]
+fn capabilities_read_profile_excludes_write_tools() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"osiris.capabilities"}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["profile"], "read");
+    assert_eq!(r["godot_connected"], false);
+    let tools = r["tools"].as_array().unwrap();
+    assert!(!tools.iter().any(|t| t["name"] == "godot.scene.create_node"));
+    assert!(tools.iter().any(|t| t["name"] == "godot.scene.active"));
+}

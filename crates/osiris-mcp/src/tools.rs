@@ -334,6 +334,12 @@ fn all_tools() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "osiris.capabilities",
+            "title": "Catálogo de capacidades",
+            "description": "Devuelve qué capacidades y tools están disponibles para el perfil, Godot y protocolo actuales (RF-12).",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
     ]
 }
 
@@ -380,7 +386,8 @@ pub fn call(
         | "plan.validate"
         | "plan.execute"
         | "skill.list"
-        | "skill.get" => {
+        | "skill.get"
+        | "osiris.capabilities" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

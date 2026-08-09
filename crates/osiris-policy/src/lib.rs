@@ -49,6 +49,15 @@ impl FromStr for Profile {
     }
 }
 
+/// Capacidades que el perfil concede, para el catálogo (RF-12).
+#[must_use]
+pub fn capabilities(profile: Profile) -> Vec<Capability> {
+    [Capability::GodotSceneWrite, Capability::GodotRun]
+        .into_iter()
+        .filter(|c| profile.has(*c))
+        .collect()
+}
+
 /// La capacidad que una herramienta necesita, o `None` si es de solo lectura.
 #[must_use]
 pub fn required(tool_name: &str) -> Option<Capability> {

@@ -204,6 +204,12 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Read,
         handler: skill_get,
     },
+    ToolSpec {
+        name: "osiris.capabilities",
+        op: None,
+        effect: Effect::Read,
+        handler: capabilities_handler,
+    },
 ];
 
 /// Skill: conocimiento declarativo de cómo resolver una intención con tools
@@ -624,6 +630,45 @@ fn osiris_diagnose() -> Value {
 
 fn plain_result() -> fn(&dyn GodotPort, &Value) -> Value {
     |_, result| result.clone()
+}
+
+/// Catálogo de capacidades (RF-12): qué capacidades y tools están disponibles
+/// para la combinación actual de perfil, Godot y protocolo.
+fn capabilities_handler(
+    _spec: &ToolSpec,
+    _params: &Value,
+    ipc: Option<&mut dyn GodotPort>,
+    _cache: &mut IdempotencyCache,
+    profile: Profile,
+) -> Result<Value, DomainError> {
+    let caps: Vec<String> = osiris_policy::capabilities(profile)
+        .iter()
+        .map(|c| format!("{c:?}"))
+        .collect();
+    let tools: Vec<Value> = TOOLS
+        .iter()
+        .filter(|t| osiris_policy::visible_in(profile, t.name))
+        .map(|t| {
+            serde_json::json!({
+                "name": t.name,
+                "effect": format!("{:?}", t.effect).to_lowercase(),
+            })
+        })
+        .collect();
+    let godot_connected = ipc.is_some();
+    let godot_version = ipc.map(|c| c.godot_version().to_string());
+    let info = serde_json::json!({
+        "profile": format!("{:?}", profile).to_lowercase(),
+        "capabilities": caps,
+        "godot_connected": godot_connected,
+        "godot_version": godot_version,
+        "protocol_versions": ["2025-06-18", "2025-03-26", "2024-11-05"],
+        "tools": tools,
+    });
+    Ok(serde_json::json!({
+        "content": [{ "type": "text", "text": info.to_string() }],
+        "isError": false,
+    }))
 }
 
 /// Ejecuta una orden en el puente y envuelve el resultado como texto MCP.
