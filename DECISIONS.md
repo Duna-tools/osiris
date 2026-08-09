@@ -83,10 +83,11 @@ implementación tomadas durante el desarrollo de Osiris que no están en el vaul
 
 ## Deuda técnica
 
-| ID | Ítem | Severidad | Condición de cierre |
+| ID | Ítem | Severidad | Estado |
 |---|---|---|---|
 | TD-001 | Contrato IPC provisional JSON | Media | Resuelto: T-034 confirma JSON (D-002) |
-| TD-002 | Matriz limitada de Godot | Alta | Ampliar antes de release estable |
-| TD-003 | Política de plugins no definida | Media | RFC antes de habilitar (T-080) |
-| TD-004 | Persistencia de journal no seleccionada | Alta | Prototipo en fase E |
-| TD-005 | Clientes MCP en CI | Media | Harness por cliente (sin release aún) |
+| TD-002 | Matriz limitada de Godot | Alta | **Cubierta por reflexión**: `godot.describe` (ClassDB) + `osiris.capabilities` (RF-12) hacen el catálogo dinámico; falta integrar clientes MCP reales para validar la surface |
+| TD-003 | Política de plugins no definida | Media | Abierta: RFC antes de habilitar (T-080) |
+| TD-004 | Persistencia de journal no seleccionada | Alta | Abierta: el audit (RF-14) va a stderr; persistencia prototipo cuando haya consumidor |
+| TD-005 | Clientes MCP en CI | Media | Abierta: harness por cliente (sin release aún) |
+| TD-006 | Config `bind_addr` vestigio del modo HTTP | Baja | **Resuelto 2026-08-09**: eliminado; el transporte es stdio, nada escucha TCP |

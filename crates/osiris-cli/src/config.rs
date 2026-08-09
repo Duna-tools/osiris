@@ -5,7 +5,6 @@
 //! ADR-006: la dirección por defecto es loopback; nunca se expone en red sin
 //! configuración explícita.
 
-const DEFAULT_BIND_ADDR: &str = "127.0.0.1:3000";
 const DEFAULT_LOG_LEVEL: &str = "info";
 
 use serde::Deserialize;
@@ -15,7 +14,6 @@ use osiris_policy::Profile;
 /// Configuración resuelta tras aplicar toda la cadena de precedencia.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    pub bind_addr: String,
     pub log_level: String,
     pub ipc_addr: Option<String>,
     pub ipc_token_file: Option<String>,
@@ -26,7 +24,6 @@ pub struct Config {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct FileConfig {
-    bind_addr: Option<String>,
     log_level: Option<String>,
     ipc_addr: Option<String>,
     ipc_token_file: Option<String>,
@@ -37,7 +34,6 @@ struct FileConfig {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct CliArgs {
     pub config_path: Option<String>,
-    pub bind_addr: Option<String>,
     pub log_level: Option<String>,
     pub ipc_addr: Option<String>,
     pub ipc_token_file: Option<String>,
@@ -51,7 +47,6 @@ pub const USAGE: &str = "Uso: osiris-server [opciones]
 
 Opciones:
   --config <ruta>       Archivo TOML de configuración (o OSIRIS_CONFIG)
-  --bind <addr>         Dirección de escucha (o OSIRIS_BIND_ADDR) [defecto: 127.0.0.1:3000]
   --log-level <nivel>   Nivel de log (o OSIRIS_LOG_LEVEL) [defecto: info]
   --ipc-addr <addr>     Dirección del puente Godot (o OSIRIS_IPC_ADDR)
   --ipc-token-file <f>  Archivo con el token del puente (o OSIRIS_IPC_TOKEN_FILE)
@@ -72,7 +67,6 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
         match flag {
             "-h" | "--help" => out.help = true,
             "--config"
-            | "--bind"
             | "--log-level"
             | "--ipc-addr"
             | "--ipc-token-file"
@@ -84,7 +78,6 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                     .clone();
                 match flag {
                     "--config" => out.config_path = Some(value),
-                    "--bind" => out.bind_addr = Some(value),
                     "--ipc-addr" => out.ipc_addr = Some(value),
                     "--ipc-token-file" => out.ipc_token_file = Some(value),
                     "--ipc-timeout-ms" => {
@@ -115,7 +108,6 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
 /// Devuelve `Err` si el archivo de configuración no existe o no es TOML válido.
 pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Config, String> {
     let mut cfg = Config {
-        bind_addr: DEFAULT_BIND_ADDR.to_string(),
         log_level: DEFAULT_LOG_LEVEL.to_string(),
         ipc_addr: None,
         ipc_token_file: None,
@@ -129,9 +121,6 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
             std::fs::read_to_string(&path).map_err(|e| format!("no se pudo leer {path}: {e}"))?;
         let file: FileConfig =
             toml::from_str(&text).map_err(|e| format!("TOML inválido en {path}: {e}"))?;
-        if let Some(v) = file.bind_addr {
-            cfg.bind_addr = v;
-        }
         if let Some(v) = file.log_level {
             cfg.log_level = v;
         }
@@ -146,9 +135,6 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
         }
     }
 
-    if let Some(v) = env("OSIRIS_BIND_ADDR") {
-        cfg.bind_addr = v;
-    }
     if let Some(v) = env("OSIRIS_LOG_LEVEL") {
         cfg.log_level = v;
     }
@@ -169,9 +155,6 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
             .map_err(|e| format!("OSIRIS_CAPABILITY_PROFILE: {e}"))?;
     }
 
-    if let Some(v) = &args.bind_addr {
-        cfg.bind_addr.clone_from(v);
-    }
     if let Some(v) = &args.log_level {
         cfg.log_level.clone_from(v);
     }
@@ -212,9 +195,8 @@ mod tests {
     }
 
     #[test]
-    fn defaults_are_loopback_and_info() {
+    fn defaults_are_info() {
         let cfg = load(&CliArgs::default(), no_env).unwrap();
-        assert_eq!(cfg.bind_addr, "127.0.0.1:3000");
         assert_eq!(cfg.log_level, "info");
     }
 
@@ -223,16 +205,14 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("osiris-cfg-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("osiris.toml");
-        std::fs::write(&path, "bind_addr = \"10.0.0.1:1\"\nlog_level = \"warn\"\n").unwrap();
+        std::fs::write(&path, "log_level = \"warn\"\n").unwrap();
         let path_str = path.to_string_lossy().to_string();
 
         let cfg = load(&args(&["--config", &path_str]), no_env).unwrap();
-        assert_eq!(cfg.bind_addr, "10.0.0.1:1");
         assert_eq!(cfg.log_level, "warn");
 
         let env = |k: &str| (k == "OSIRIS_LOG_LEVEL").then(|| "debug".to_string());
         let cfg = load(&args(&["--config", &path_str]), env).unwrap();
-        assert_eq!(cfg.bind_addr, "10.0.0.1:1");
         assert_eq!(cfg.log_level, "debug");
 
         let cfg = load(&args(&["--config", &path_str, "--log-level", "error"]), env).unwrap();

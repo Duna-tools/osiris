@@ -73,7 +73,7 @@ fn main() -> ExitCode {
 
     let ipc = connect_ipc(&cfg);
 
-    info!(bind_addr = %cfg.bind_addr, "servidor MCP stdio iniciado");
+    info!("servidor MCP stdio iniciado");
     let mut server = osiris_mcp::server::Server::new(ipc, cfg.capability_profile);
     if let Err(e) = osiris_mcp::server::run_server(&mut server) {
         error!(error = %e, "el servidor stdio terminó con error");
