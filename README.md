@@ -93,16 +93,30 @@ osiris-server [options]
 | `godot.run` | admin | Run project |
 | `godot.stop` | admin | Stop project |
 | `godot.run.status` | read | Check if project is running |
+| `godot.run.output` | read | Get output (log) of the running project |
 | `godot.assert.property` | read | Assert property equals expected value |
+| `godot.script.validate` | read | Validate GDScript syntax before writing it |
 
 ### Running tests
 
 ```bash
-cargo test --workspace      # unit + integration tests (17 contract tests)
-cargo bench -p osiris-ipc-client   # IPC benchmarks
+cargo test --workspace                 # unit + integration + property tests (21 contract tests)
+cargo bench -p osiris-ipc-client       # IPC benchmarks (connect ~71µs, roundtrip ~41ms, codec ~0.2-0.9µs)
 cargo clippy --workspace --all-targets -- -D warnings
-cargo audit                 # 0 known vulnerabilities
+cargo audit                            # 0 known vulnerabilities
 ```
+
+The suite covers: lifecycle, handshake, stdout purity (JSON-RPC only on stdout),
+size limits, capability authorization, idempotency, IPC reconnect (UC-050),
+health, run output, and property-based fuzzing of the parsers.
+
+### Status
+
+All roadmap phases A–F are implemented. Hardening (fuzzing, benchmarks, security
+audit, codec decision) and the vault-required gaps (RF-003/011/014/028/034/035/041,
+RNF-003/050, UC-050 reconnect) are closed. See `DECISIONS.md` for architecture
+decisions and `COMPATIBILITY.md` for the version matrix. Deferred until a real
+release: SBOM/signing, plugin SDK, HTTP sessions, metrics exporters.
 
 ### Security
 
@@ -248,14 +262,18 @@ osiris-server [opciones]
 | `godot.run` | admin | Ejecutar proyecto |
 | `godot.stop` | admin | Detener proyecto |
 | `godot.run.status` | read | Consultar si el proyecto está en ejecución |
+| `godot.run.output` | read | Salida (log) del proyecto ejecutado |
 | `godot.assert.property` | read | Verificar que una propiedad coincide con un valor esperado |
+| `godot.script.validate` | read | Validar sintaxis GDScript antes de escribirlo |
 
 ### Ejecutar pruebas
 
 ```bash
-cargo test --workspace      # tests unitarios + integración (17 tests de contrato)
-cargo bench -p osiris-ipc-client   # benchmarks IPC
+cargo test --workspace      # tests unitarios + integración + property (21 tests de contrato)
+cargo bench -p osiris-ipc-client   # benchmarks IPC (connect ~71µs, roundtrip ~41ms, codec ~0.2-0.9µs)
 cargo clippy --workspace --all-targets -- -D warnings
+cargo audit                 # 0 vulnerabilidades conocidas
+```
 cargo audit                 # 0 vulnerabilidades conocidas
 ```
 
@@ -268,6 +286,15 @@ cargo audit                 # 0 vulnerabilidades conocidas
 - Los logs escriben a **stderr** — stdout está reservado para el protocolo JSON-RPC
 - Las capacidades son **deny-by-default**: las mutaciones requieren cambio explícito de perfil
 - Auditoría completa de dependencias: 0 vulnerabilidades conocidas, 0 bloques `unsafe`
+
+### Estado
+
+Las fases A–F del roadmap están implementadas. Endurecimiento (fuzzing,
+benchmarks, auditoría de seguridad, decisión de codec) y las brechas del vault
+(RF-003/011/014/028/034/035/041, RNF-003/050, reconexión UC-050) están cerradas.
+Ver `DECISIONS.md` para decisiones de arquitectura y `COMPATIBILITY.md` para la
+matriz de versiones. Diferido hasta un release real: SBOM/firmas, SDK de plugins,
+sesiones HTTP, exportadores de métricas.
 
 ### Configuración por cliente MCP
 
