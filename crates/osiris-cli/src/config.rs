@@ -19,6 +19,7 @@ pub struct Config {
     pub log_level: String,
     pub ipc_addr: Option<String>,
     pub ipc_token_file: Option<String>,
+    pub ipc_timeout_ms: u64,
     pub capability_profile: Profile,
 }
 
@@ -29,6 +30,7 @@ struct FileConfig {
     log_level: Option<String>,
     ipc_addr: Option<String>,
     ipc_token_file: Option<String>,
+    ipc_timeout_ms: Option<u64>,
 }
 
 /// Argumentos CLI ya parseados (todos opcionales salvo `--help`).
@@ -39,6 +41,7 @@ pub struct CliArgs {
     pub log_level: Option<String>,
     pub ipc_addr: Option<String>,
     pub ipc_token_file: Option<String>,
+    pub ipc_timeout_ms: Option<u64>,
     pub capability_profile: Option<String>,
     pub help: bool,
 }
@@ -52,6 +55,7 @@ Opciones:
   --log-level <nivel>   Nivel de log (o OSIRIS_LOG_LEVEL) [defecto: info]
   --ipc-addr <addr>     Dirección del puente Godot (o OSIRIS_IPC_ADDR)
   --ipc-token-file <f>  Archivo con el token del puente (o OSIRIS_IPC_TOKEN_FILE)
+  --ipc-timeout-ms <n>  Timeout de operaciones IPC en milisegundos (o OSIRIS_IPC_TIMEOUT_MS) [defecto: 3000]
   --capability-profile <p>  Perfil de capacidades: read|edit|admin (o OSIRIS_CAPABILITY_PROFILE) [defecto: read]
   -h, --help            Muestra esta ayuda";
 
@@ -72,6 +76,7 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             | "--log-level"
             | "--ipc-addr"
             | "--ipc-token-file"
+            | "--ipc-timeout-ms"
             | "--capability-profile" => {
                 let value = args
                     .get(i + 1)
@@ -82,6 +87,13 @@ pub fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                     "--bind" => out.bind_addr = Some(value),
                     "--ipc-addr" => out.ipc_addr = Some(value),
                     "--ipc-token-file" => out.ipc_token_file = Some(value),
+                    "--ipc-timeout-ms" => {
+                        out.ipc_timeout_ms = Some(
+                            value
+                                .parse()
+                                .map_err(|_| "--ipc-timeout-ms debe ser un número")?,
+                        )
+                    }
                     "--capability-profile" => out.capability_profile = Some(value),
                     _ => out.log_level = Some(value),
                 }
@@ -107,6 +119,7 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
         log_level: DEFAULT_LOG_LEVEL.to_string(),
         ipc_addr: None,
         ipc_token_file: None,
+        ipc_timeout_ms: 3000,
         capability_profile: Profile::Read,
     };
 
@@ -128,6 +141,9 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
         if cfg.ipc_token_file.is_none() {
             cfg.ipc_token_file = file.ipc_token_file;
         }
+        if cfg.ipc_timeout_ms == 3000 {
+            cfg.ipc_timeout_ms = file.ipc_timeout_ms.unwrap_or(3000);
+        }
     }
 
     if let Some(v) = env("OSIRIS_BIND_ADDR") {
@@ -141,6 +157,11 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
     }
     if let Some(v) = env("OSIRIS_IPC_TOKEN_FILE") {
         cfg.ipc_token_file = Some(v);
+    }
+    if let Some(v) = env("OSIRIS_IPC_TIMEOUT_MS") {
+        cfg.ipc_timeout_ms = v
+            .parse()
+            .map_err(|e| format!("OSIRIS_IPC_TIMEOUT_MS: {e}"))?;
     }
     if let Some(v) = env("OSIRIS_CAPABILITY_PROFILE") {
         cfg.capability_profile = v
@@ -159,6 +180,9 @@ pub fn load(args: &CliArgs, env: impl Fn(&str) -> Option<String>) -> Result<Conf
     }
     if let Some(v) = &args.ipc_token_file {
         cfg.ipc_token_file = Some(v.clone());
+    }
+    if let Some(v) = &args.ipc_timeout_ms {
+        cfg.ipc_timeout_ms = *v;
     }
     if let Some(v) = &args.capability_profile {
         cfg.capability_profile = v
@@ -229,5 +253,13 @@ mod tests {
     fn help_flag_is_recognized() {
         assert!(args(&["--help"]).help);
         assert!(args(&["-h"]).help);
+    }
+
+    #[test]
+    fn ipc_timeout_default_and_override() {
+        let cfg = load(&CliArgs::default(), no_env).unwrap();
+        assert_eq!(cfg.ipc_timeout_ms, 3000);
+        let cfg = load(&args(&["--ipc-timeout-ms", "1500"]), no_env).unwrap();
+        assert_eq!(cfg.ipc_timeout_ms, 1500);
     }
 }
