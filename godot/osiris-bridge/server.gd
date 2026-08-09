@@ -427,10 +427,13 @@ func _collect_nodes(node: Node, max_depth: int, items: Array, max_total: int, de
 	return false
 
 func _ok(id: Variant, payload: Variant) -> Dictionary:
-	return {"type": "response", "id": id, "ok": payload}
+	# JSON.parse convierte todo número a float; el contrato espera id entero.
+	var id_out: Variant = int(id) if id != null else null
+	return {"type": "response", "id": id_out, "ok": payload}
 
 func _error(id: Variant, code: String, message: String, retryable: bool = false) -> Dictionary:
-	return {"type": "response", "id": id if id != null else null, "error": {"code": code, "message": message, "retryable": retryable}}
+	var id_out: Variant = int(id) if id != null else null
+	return {"type": "response", "id": id_out, "error": {"code": code, "message": message, "retryable": retryable}}
 
 func _get_property(id: Variant, params: Dictionary) -> Dictionary:
 	var node: Node = _resolve_node(params)

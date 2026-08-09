@@ -60,7 +60,8 @@ pub fn required(tool_name: &str) -> Option<Capability> {
         | "godot.signal.connect"
         | "godot.signal.disconnect"
         | "godot.asset.reimport"
-        | "godot.resource.assign" => Some(Capability::GodotSceneWrite),
+        | "godot.resource.assign"
+        | "plan.execute" => Some(Capability::GodotSceneWrite),
         "godot.run" | "godot.stop" => Some(Capability::GodotRun),
         _ => None,
     }

@@ -283,6 +283,38 @@ fn all_tools() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "plan.validate",
+            "title": "Validar plan",
+            "description": "Valida la estructura de un plan (steps con tool conocida, params objeto) sin ejecutar nada.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plan": {
+                        "type": "object",
+                        "description": "Plan: { steps: [{tool, id?, params?}] }."
+                    }
+                },
+                "required": ["plan"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "plan.execute",
+            "title": "Ejecutar plan",
+            "description": "Ejecuta los pasos de un plan en orden. Los params de un paso pueden referenciar el resultado de uno previo con $id.campo. Un paso fallido aborta el plan. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plan": {
+                        "type": "object",
+                        "description": "Plan: { steps: [{tool, id?, params?}] }."
+                    }
+                },
+                "required": ["plan"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -325,7 +357,9 @@ pub fn call(
         | "godot.signal.disconnect"
         | "godot.asset.list"
         | "godot.asset.reimport"
-        | "godot.resource.assign" => {
+        | "godot.resource.assign"
+        | "plan.validate"
+        | "plan.execute" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

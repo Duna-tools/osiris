@@ -14,8 +14,16 @@ use std::collections::VecDeque;
 /// Reexport del efecto (dominio rico, ADR-001).
 pub use osiris_domain::Effect;
 
-/// Handler de una herramienta. Recibe el spec para reusar `op` de forma genérica.
-type ToolHandler = fn(&ToolSpec, &Value, Option<&mut dyn GodotPort>) -> Result<Value, DomainError>;
+/// Handler de una herramienta. `ipc` es el puente; `cache` y `profile` permiten
+/// a tools compuestas (planes) orquestar otras tools (RF-10). `ipc` y `cache`
+/// tienen vidas independientes para poder reborrarlas por paso en un plan.
+type ToolHandler = for<'a, 'b> fn(
+    &ToolSpec,
+    &Value,
+    Option<&'a mut dyn GodotPort>,
+    &'b mut IdempotencyCache,
+    Profile,
+) -> Result<Value, DomainError>;
 
 /// Descriptor de herramienta registrada (ADR-008).
 pub struct ToolSpec {
@@ -172,6 +180,18 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Write,
         handler: ipc_plain,
     },
+    ToolSpec {
+        name: "plan.validate",
+        op: None,
+        effect: Effect::Read,
+        handler: plan_validate,
+    },
+    ToolSpec {
+        name: "plan.execute",
+        op: None,
+        effect: Effect::Write,
+        handler: plan_execute,
+    },
 ];
 
 /// Cache de idempotencia: evita re-ejecutar lecturas repetidas (error-model.md §4).
@@ -254,13 +274,17 @@ pub fn handle_tool(
         .ok_or_else(|| DomainError::Validation(format!("herramienta desconocida: {name}")))?;
 
     if spec.effect == Effect::Write {
-        (spec.handler)(spec, params, ipc)
+        let ipc_short = ipc.map(|i| &mut *i);
+        let cache_short: &mut IdempotencyCache = &mut *cache;
+        (spec.handler)(spec, params, ipc_short, cache_short, profile)
     } else {
         let key = cache_key(name, params);
         if let Some(cached) = cache.get(&key) {
             return Ok(cached.clone());
         }
-        let result = (spec.handler)(spec, params, ipc)?;
+        let ipc_short = ipc.map(|i| &mut *i);
+        let cache_short: &mut IdempotencyCache = &mut *cache;
+        let result = (spec.handler)(spec, params, ipc_short, cache_short, profile)?;
         cache.put(key, result.clone());
         Ok(result)
     }
@@ -271,6 +295,8 @@ fn ipc_plain(
     spec: &ToolSpec,
     params: &Value,
     ipc: Option<&mut dyn GodotPort>,
+    _cache: &mut IdempotencyCache,
+    _profile: Profile,
 ) -> Result<Value, DomainError> {
     ipc_tool(
         ipc,
@@ -285,6 +311,8 @@ fn local_diagnose(
     _spec: &ToolSpec,
     _params: &Value,
     _ipc: Option<&mut dyn GodotPort>,
+    _cache: &mut IdempotencyCache,
+    _profile: Profile,
 ) -> Result<Value, DomainError> {
     Ok(osiris_diagnose())
 }
@@ -294,6 +322,8 @@ fn godot_diagnose(
     spec: &ToolSpec,
     _params: &Value,
     ipc: Option<&mut dyn GodotPort>,
+    _cache: &mut IdempotencyCache,
+    _profile: Profile,
 ) -> Result<Value, DomainError> {
     ipc_tool(
         ipc,
@@ -306,6 +336,176 @@ fn godot_diagnose(
             })
         },
     )
+}
+
+/// Plan: lista de pasos con `tool`, `id` opcional y `params`. Los params
+/// pueden referenciar el resultado de un paso previo con `$id.campo` (RF-10).
+fn parse_plan(plan: &Value) -> Result<&[Value], DomainError> {
+    let steps = plan
+        .get("steps")
+        .and_then(Value::as_array)
+        .ok_or_else(|| DomainError::Validation("plan.steps requerido (array)".to_string()))?;
+    if steps.is_empty() {
+        return Err(DomainError::Validation(
+            "plan.steps no puede estar vacío".to_string(),
+        ));
+    }
+    Ok(steps)
+}
+
+/// Sustituye `$id.campo` por el valor del paso `id` (resultado ya parseado).
+fn resolve_ref(value: &Value, results: &std::collections::HashMap<String, Value>) -> Value {
+    match value {
+        Value::String(s) if s.starts_with('$') => {
+            let path = &s[1..];
+            let (id, field) = match path.split_once('.') {
+                Some((id, f)) => (id, Some(f)),
+                None => (path, None),
+            };
+            match results.get(id) {
+                Some(v) => match field {
+                    Some(f) => v.get(f).cloned().unwrap_or_else(|| value.clone()),
+                    None => v.clone(),
+                },
+                None => value.clone(),
+            }
+        }
+        Value::Array(items) => {
+            Value::Array(items.iter().map(|i| resolve_ref(i, results)).collect())
+        }
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (k, v) in map {
+                out.insert(k.clone(), resolve_ref(v, results));
+            }
+            Value::Object(out)
+        }
+        other => other.clone(),
+    }
+}
+
+/// Extrae el payload real de una tool (el `ok` en `content[0].text`) para
+/// poder referenciarlo con `$id.campo` en planes. Si no hay wrapper, devuelve
+/// el valor tal cual.
+fn unwrap_tool_result(result: &Value) -> Value {
+    result
+        .get("content")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(|c| c.get("text"))
+        .and_then(Value::as_str)
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_else(|| result.clone())
+}
+
+fn validate_steps(steps: &[Value]) -> Result<(), DomainError> {
+    for (i, step) in steps.iter().enumerate() {
+        let tool = step
+            .get("tool")
+            .and_then(Value::as_str)
+            .ok_or_else(|| DomainError::Validation(format!("step[{i}].tool requerido")))?;
+        if find_tool(tool).is_none() {
+            return Err(DomainError::Validation(format!(
+                "step[{i}].tool desconocida: {tool}"
+            )));
+        }
+        if step.get("params").is_some() && !step["params"].is_object() {
+            return Err(DomainError::Validation(format!(
+                "step[{i}].params debe ser objeto"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Handler de `plan.validate`: valida estructura y herramientas sin ejecutar.
+fn plan_validate(
+    _spec: &ToolSpec,
+    params: &Value,
+    _ipc: Option<&mut dyn GodotPort>,
+    _cache: &mut IdempotencyCache,
+    _profile: Profile,
+) -> Result<Value, DomainError> {
+    let plan = params
+        .get("plan")
+        .ok_or_else(|| DomainError::Validation("parámetro 'plan' requerido".to_string()))?;
+    let steps = parse_plan(plan)?;
+    validate_steps(steps)?;
+    Ok(serde_json::json!({
+        "content": [{ "type": "text", "text": serde_json::json!({
+            "valid": true,
+            "steps": steps.len(),
+        }).to_string() }],
+        "isError": false,
+    }))
+}
+
+/// Handler de `plan.execute`: ejecuta pasos en orden, resolviendo `$id.campo`.
+/// Un paso fallido aborta el plan y devuelve los receipts ya obtenidos.
+fn plan_execute(
+    _spec: &ToolSpec,
+    params: &Value,
+    ipc: Option<&mut dyn GodotPort>,
+    cache: &mut IdempotencyCache,
+    profile: Profile,
+) -> Result<Value, DomainError> {
+    let plan = params
+        .get("plan")
+        .ok_or_else(|| DomainError::Validation("parámetro 'plan' requerido".to_string()))?;
+    let steps = parse_plan(plan)?;
+    validate_steps(steps)?;
+    // `ipc` y `cache` ya llegan como reborrows del caller; `exec_steps` los
+    // re-presta por paso con vidas cortas propias.
+    exec_steps(steps, ipc, &mut *cache, profile)
+}
+
+/// Ejecuta los pasos con vidas cortas, desacopladas del `'a`/`'b` del handler.
+fn exec_steps(
+    steps: &[Value],
+    mut ipc: Option<&mut dyn GodotPort>,
+    cache: &mut IdempotencyCache,
+    profile: Profile,
+) -> Result<Value, DomainError> {
+    let mut results: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+    let mut receipts: Vec<Value> = Vec::with_capacity(steps.len());
+
+    for (i, step) in steps.iter().enumerate() {
+        let tool = step["tool"].as_str().unwrap();
+        let id = step
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or(&format!("step{i}"))
+            .to_string();
+        let raw_params = step.get("params").cloned().unwrap_or(Value::Null);
+        let resolved = resolve_ref(&raw_params, &results);
+        // Reborrow manual por paso: `&mut **c` tiene la vida del body del loop,
+        // no la del trait object (evita retener el borrow entre iteraciones).
+        let ipc_ref: Option<&mut dyn GodotPort> = match &mut ipc {
+            Some(c) => Some(&mut **c),
+            None => None,
+        };
+        let result = handle_tool(tool, &resolved, ipc_ref, profile, cache)
+            .map_err(|e| DomainError::Godot(format!("plan abortado en step[{i}] '{tool}': {e}")))?;
+        // Guardamos el payload real (ok de la tool) para las referencias `$id.campo`,
+        // no el wrapper MCP {content, isError}.
+        let payload = unwrap_tool_result(&result);
+        let id_clone = id.clone();
+        results.insert(id.clone(), payload);
+        receipts.push(serde_json::json!({
+            "step": i,
+            "tool": tool,
+            "id": id_clone,
+            "result": result,
+        }));
+    }
+
+    Ok(serde_json::json!({
+        "content": [{ "type": "text", "text": serde_json::json!({
+            "ok": true,
+            "receipts": receipts,
+        }).to_string() }],
+        "isError": false,
+    }))
 }
 
 fn osiris_diagnose() -> Value {
@@ -379,5 +579,28 @@ mod tests {
     #[test]
     fn unknown_tool_errors() {
         assert!(find_tool("no.existe").is_none());
+    }
+
+    #[test]
+    fn unwrap_tool_result_extracts_payload() {
+        let wrapper = serde_json::json!({
+            "content": [{ "type": "text", "text": "{\"path\":\"./Btn\",\"name\":\"Btn\"}" }],
+            "isError": false,
+        });
+        let payload = unwrap_tool_result(&wrapper);
+        assert_eq!(payload["path"], "./Btn");
+    }
+
+    #[test]
+    fn resolve_ref_replaces_step_field() {
+        let mut results = std::collections::HashMap::new();
+        results.insert("btn".to_string(), serde_json::json!({"path": "./Btn"}));
+        let resolved = resolve_ref(&serde_json::json!({"path": "$btn.path"}), &results);
+        assert_eq!(resolved["path"], "./Btn");
+        let missing = resolve_ref(&serde_json::json!({"path": "$btn.nope"}), &results);
+        assert_eq!(
+            missing["path"], "$btn.nope",
+            "campo inexistente se deja como está"
+        );
     }
 }

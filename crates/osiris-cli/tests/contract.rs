@@ -188,124 +188,130 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
         )
         .unwrap();
         writer.flush().unwrap();
-        let mut line = String::new();
-        reader.read_line(&mut line).unwrap();
-        let msg: Value = serde_json::from_str(&line).unwrap();
-        let id = msg["id"].as_u64().unwrap();
-        if msg["op"] == "get_version" {
-            writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"godot":"4.5.1","project":"test-project"}}}}"#).unwrap();
-        } else if msg["op"] == "get_active_scene" {
-            writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"path":"res://main.tscn","root_name":"Main","node_count":5}}}}"#).unwrap();
-        } else if msg["op"] == "get_property" {
-            writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"path":".","property":"position","value":{{"x":1.5,"y":2.0}}}}}}"#).unwrap();
-        } else if msg["op"] == "get_editor_errors" {
-            writeln!(
-                writer,
-                r#"{{"type":"response","id":{id},"ok":{{"errors":[]}}}}"#
-            )
-            .unwrap();
-        } else if msg["op"] == "create_node" {
-            writeln!(
+        // Responde a todas las peticiones hasta que el cliente cierre.
+        loop {
+            line.clear();
+            let n = reader.read_line(&mut line).unwrap();
+            if n == 0 {
+                break;
+            }
+            let msg: Value = serde_json::from_str(&line).unwrap();
+            let id = msg["id"].as_u64().unwrap();
+            if msg["op"] == "get_version" {
+                writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"godot":"4.5.1","project":"test-project"}}}}"#).unwrap();
+            } else if msg["op"] == "get_active_scene" {
+                writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"path":"res://main.tscn","root_name":"Main","node_count":5}}}}"#).unwrap();
+            } else if msg["op"] == "get_property" {
+                writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{"path":".","property":"position","value":{{"x":1.5,"y":2.0}}}}}}"#).unwrap();
+            } else if msg["op"] == "get_editor_errors" {
+                writeln!(
+                    writer,
+                    r#"{{"type":"response","id":{id},"ok":{{"errors":[]}}}}"#
+                )
+                .unwrap();
+            } else if msg["op"] == "create_node" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"path":"./Sprite","type":"Node2D","name":"Sprite"}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "remove_node" {
-            writeln!(
-                writer,
-                r#"{{"type":"response","id":{id},"ok":{{"removed":"OldNode"}}}}"#
-            )
-            .unwrap();
-        } else if msg["op"] == "set_property" {
-            writeln!(
+            } else if msg["op"] == "remove_node" {
+                writeln!(
+                    writer,
+                    r#"{{"type":"response","id":{id},"ok":{{"removed":"OldNode"}}}}"#
+                )
+                .unwrap();
+            } else if msg["op"] == "set_property" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"property":"position","value":{{"x":10.0,"y":20.0}}}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "save_scene" {
-            writeln!(
-                writer,
-                r#"{{"type":"response","id":{id},"ok":{{"saved":"res://main.tscn"}}}}"#
-            )
-            .unwrap();
-        } else if msg["op"] == "run_project" {
-            let scene = msg["params"]["scene"].as_str().unwrap_or("main");
-            writeln!(
-                writer,
-                r#"{{"type":"response","id":{id},"ok":{{"running":true,"scene":"{scene}"}}}}"#
-            )
-            .unwrap();
-        } else if msg["op"] == "stop_project" || msg["op"] == "get_run_status" {
-            writeln!(
-                writer,
-                r#"{{"type":"response","id":{id},"ok":{{"running":false}}}}"#
-            )
-            .unwrap();
-        } else if msg["op"] == "get_run_output" {
-            writeln!(
+            } else if msg["op"] == "save_scene" {
+                writeln!(
+                    writer,
+                    r#"{{"type":"response","id":{id},"ok":{{"saved":"res://main.tscn"}}}}"#
+                )
+                .unwrap();
+            } else if msg["op"] == "run_project" {
+                let scene = msg["params"]["scene"].as_str().unwrap_or("main");
+                writeln!(
+                    writer,
+                    r#"{{"type":"response","id":{id},"ok":{{"running":true,"scene":"{scene}"}}}}"#
+                )
+                .unwrap();
+            } else if msg["op"] == "stop_project" || msg["op"] == "get_run_status" {
+                writeln!(
+                    writer,
+                    r#"{{"type":"response","id":{id},"ok":{{"running":false}}}}"#
+                )
+                .unwrap();
+            } else if msg["op"] == "get_run_output" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"output":"linea1\\nlinea2","running":false}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "assert_property" {
-            writeln!(
+            } else if msg["op"] == "assert_property" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"match":true,"actual":100,"expected":100}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "validate_script" {
-            writeln!(
-                writer,
-                r#"{{"type":"response","id":{id},"ok":{{"valid":true}}}}"#
-            )
-            .unwrap();
-        } else if msg["op"] == "describe_class" {
-            let klass = msg["params"]["class"].as_str().unwrap_or("Node");
-            writeln!(
+            } else if msg["op"] == "validate_script" {
+                writeln!(
+                    writer,
+                    r#"{{"type":"response","id":{id},"ok":{{"valid":true}}}}"#
+                )
+                .unwrap();
+            } else if msg["op"] == "describe_class" {
+                let klass = msg["params"]["class"].as_str().unwrap_or("Node");
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"class":"{klass}","inherits":"Node","properties":[{{"name":"position","type":"Vector2"}}],"methods":[{{"name":"queue_free","args":[]}}],"signals":["tree_entered"],"constants":[]}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "list_signals" {
-            writeln!(
+            } else if msg["op"] == "list_signals" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"path":".","signals":[{{"name":"tree_entered","args":[]}}]}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "connect_signal" {
-            writeln!(
+            } else if msg["op"] == "connect_signal" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"connected":true,"signal":"pressed","target_path":"./Btn","method":"on_pressed"}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "disconnect_signal" {
-            writeln!(
+            } else if msg["op"] == "disconnect_signal" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"disconnected":true,"signal":"pressed","target_path":"./Btn","method":"on_pressed"}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "asset_list" {
-            writeln!(
+            } else if msg["op"] == "asset_list" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"path":"res://","items":[{{"path":"res://main.tscn","type":"PackedScene","imported":true}}],"has_more":false,"scanning":false}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "asset_reimport" {
-            writeln!(
+            } else if msg["op"] == "asset_reimport" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"path":"res://icon.svg","queued":true}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "resource_assign" {
-            writeln!(
+            } else if msg["op"] == "resource_assign" {
+                writeln!(
                 writer,
                 r#"{{"type":"response","id":{id},"ok":{{"property":"texture","resource":"res://icon.svg","assigned":true}}}}"#
             )
             .unwrap();
-        } else {
-            writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
+            } else {
+                writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
+            }
+            writer.flush().unwrap();
         }
-        writer.flush().unwrap();
     });
     (addr, handle, token_path)
 }
@@ -810,4 +816,82 @@ fn strip_ansi(s: &str) -> String {
         }
     }
     out
+}
+
+#[test]
+fn plan_validate_rejects_unknown_tool() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"plan.validate","arguments":{"plan":{"steps":[{"tool":"no.existe","params":{}}]}}}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "validation");
+}
+
+#[test]
+fn plan_validate_ok_with_known_tools() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"plan.validate","arguments":{"plan":{"steps":[{"tool":"godot.scene.active","id":"a"}]}}}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["valid"], true);
+    assert_eq!(r["steps"], 1);
+}
+
+#[test]
+fn plan_execute_runs_steps_and_resolves_refs() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"plan.execute","arguments":{"plan":{"steps":[{"tool":"godot_diagnose","id":"diag"},{"tool":"godot.scene.active","id":"scene","params":{"path":"$diag.godot_version"}}]}}}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server_with_args(
+        &[
+            "--ipc-addr",
+            &addr,
+            "--ipc-token-file",
+            &token_path,
+            "--capability-profile",
+            "edit",
+        ],
+        &input,
+    );
+    assert!(ok);
+    assert_eq!(lines.len(), 2, "initialize + plan.execute: {lines:?}");
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["ok"], true);
+    assert_eq!(r["receipts"].as_array().unwrap().len(), 2);
+    assert_eq!(r["receipts"][0]["id"], "diag");
+    assert_eq!(r["receipts"][1]["id"], "scene");
+}
+
+#[test]
+fn plan_execute_rejected_on_read_profile() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"plan.execute","arguments":{"plan":{"steps":[{"tool":"godot.scene.set_property","params":{}}]}}}}"#,
+    ]
+    .join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
 }
