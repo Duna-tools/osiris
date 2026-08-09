@@ -114,6 +114,53 @@ cargo audit                 # 0 known vulnerabilities
 - Capabilities are **deny-by-default**: mutations require explicit profile upgrade
 - Full dependency audit: 0 known vulnerabilities, 0 `unsafe` blocks
 
+### Per-client MCP setup
+
+The server runs over stdio; each client configures it differently. The binary flags are the same for all (`osiris-server --ipc-addr 127.0.0.1:9876 --ipc-token-file <token> --capability-profile edit`). The token lives at `~/.local/share/godot/app_userdata/<Project>/osiris_ipc_token`.
+
+**Claude Desktop** — add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "osiris": {
+      "command": "/path/to/osiris-server",
+      "args": ["--ipc-addr", "127.0.0.1:9876", "--capability-profile", "edit"]
+    }
+  }
+}
+```
+
+**Cursor** — in the project MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "osiris": {
+      "command": "/path/to/osiris-server",
+      "args": ["--ipc-addr", "127.0.0.1:9876"]
+    }
+  }
+}
+```
+
+**VS Code (mcp extension)** — in `.mcp.json`:
+
+```json
+{
+  "servers": {
+    "osiris": {
+      "command": "/path/to/osiris-server",
+      "args": ["--ipc-addr", "127.0.0.1:9876"]
+    }
+  }
+}
+```
+
+Note: use an absolute path if the binary is not on `PATH`. For diagnostics: `--log-level debug` (logs go to stderr).
+
+See `COMPATIBILITY.md` for the supported version matrix.
+
 ---
 
 ## Español
@@ -221,3 +268,50 @@ cargo audit                 # 0 vulnerabilidades conocidas
 - Los logs escriben a **stderr** — stdout está reservado para el protocolo JSON-RPC
 - Las capacidades son **deny-by-default**: las mutaciones requieren cambio explícito de perfil
 - Auditoría completa de dependencias: 0 vulnerabilidades conocidas, 0 bloques `unsafe`
+
+### Configuración por cliente MCP
+
+El servidor se lanza por stdio; cada cliente lo configura de forma distinta. Los argumentos del binario son los mismos para todos (`osiris-server --ipc-addr 127.0.0.1:9876 --ipc-token-file <token> --capability-profile edit`). El token está en `~/.local/share/godot/app_userdata/<Proyecto>/osiris_ipc_token`.
+
+**Claude Desktop** — añadir a `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "osiris": {
+      "command": "/ruta/a/osiris-server",
+      "args": ["--ipc-addr", "127.0.0.1:9876", "--capability-profile", "edit"]
+    }
+  }
+}
+```
+
+**Cursor** — en MCP settings del proyecto:
+
+```json
+{
+  "mcpServers": {
+    "osiris": {
+      "command": "/ruta/a/osiris-server",
+      "args": ["--ipc-addr", "127.0.0.1:9876"]
+    }
+  }
+}
+```
+
+**VS Code (mcp extension)** — en `.mcp.json`:
+
+```json
+{
+  "servers": {
+    "osiris": {
+      "command": "/ruta/a/osiris-server",
+      "args": ["--ipc-addr", "127.0.0.1:9876"]
+    }
+  }
+}
+```
+
+Nota: si el binario no está en el `PATH`, usar ruta absoluta. Para ver el diagnóstico: `--log-level debug` (los logs van a stderr).
+
+Consulte `COMPATIBILITY.md` para la matriz de versiones soportadas.
