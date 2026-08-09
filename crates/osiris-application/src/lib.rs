@@ -230,6 +230,12 @@ fn find_tool(name: &str) -> Option<&'static ToolSpec> {
     TOOLS.iter().find(|t| t.name == name)
 }
 
+/// Efecto declarado de una herramienta, para auditoría (RF-14).
+#[must_use]
+pub fn effect_of(tool: &str) -> Option<Effect> {
+    find_tool(tool).map(|t| t.effect)
+}
+
 /// Despacha el `tools/call` hacia la herramienta registrada.
 ///
 /// `profile` determina las capacidades del cliente (ADR-005).

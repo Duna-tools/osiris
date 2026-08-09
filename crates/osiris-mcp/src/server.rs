@@ -46,6 +46,7 @@ pub struct Server {
     pub ipc: Option<IpcClient>,
     pub profile: Profile,
     cache: IdempotencyCache,
+    actor: Option<String>,
 }
 
 impl Server {
@@ -56,6 +57,7 @@ impl Server {
             ipc,
             profile,
             cache: IdempotencyCache::new(),
+            actor: None,
         }
     }
 
@@ -122,6 +124,20 @@ impl Server {
                     resultado = if response.is_error() { "error" } else { "ok" },
                     "herramienta ejecutada"
                 );
+                // Auditoría (RF-14): actor, params sanitizados, política,
+                // efecto y resultado en un solo evento.
+                tracing::info!(
+                    target: "osiris_audit",
+                    actor = ?self.actor,
+                    tool = tool_id,
+                    params_sha = audit_params(request.params.get("arguments")),
+                    params_chars = request.params.get("arguments").map_or(0, |a| a.to_string().chars().count()),
+                    policy = ?self.profile,
+                    effect = audit_effect(tool_id),
+                    duracion_us = started.elapsed().as_micros() as u64,
+                    resultado = if response.is_error() { "error" } else { "ok" },
+                    "audit"
+                );
                 Some(response)
             }
             _ => Some(Response::err(
@@ -167,6 +183,13 @@ impl Server {
             }
         };
         self.initialized = true;
+        self.actor = request
+            .params
+            .get("clientInfo")
+            .and_then(|ci| ci.get("name"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        tracing::debug!(actor = ?self.actor, "initialize completado");
         Response::ok(
             id,
             json!({
@@ -221,6 +244,24 @@ fn parse(line: &str) -> Result<Request, Box<Response>> {
     Ok(request)
 }
 
+/// Hash de los argumentos de una llamada para auditoría (RF-14): identifica
+/// la invocación sin exponer el contenido completo en los logs.
+fn audit_params(args: Option<&Value>) -> String {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    args.unwrap_or(&Value::Null).to_string().hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+/// Efecto declarado de la herramienta (read/write) para el registro de auditoría.
+fn audit_effect(tool: &str) -> &'static str {
+    match osiris_application::effect_of(tool) {
+        Some(osiris_application::Effect::Read) => "read",
+        Some(osiris_application::Effect::Write) => "write",
+        None => "unknown",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +291,19 @@ mod tests {
         assert_eq!(r["result"]["protocolVersion"], "2025-03-26");
         assert_eq!(r["result"]["serverInfo"]["name"], "osiris");
         assert_eq!(r["result"]["capabilities"]["tools"], json!({}));
+    }
+
+    #[test]
+    fn audit_fields_are_stable_and_deterministic() {
+        let a = audit_params(Some(&json!({"path": ".", "property": "position"})));
+        let b = audit_params(Some(&json!({"path": ".", "property": "position"})));
+        let c = audit_params(Some(&json!({"path": ".", "property": "rotation"})));
+        assert_eq!(a, b, "mismo args → mismo hash");
+        assert_ne!(a, c, "distintos args → distinto hash");
+        assert_eq!(audit_effect("godot.scene.active"), "read");
+        assert_eq!(audit_effect("godot.scene.set_property"), "write");
+        assert_eq!(audit_effect("no.existe"), "unknown");
+        assert_eq!(audit_params(None), audit_params(Some(&Value::Null)));
     }
 
     #[test]

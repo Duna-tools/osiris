@@ -757,3 +757,57 @@ fn run_output_over_ipc() {
     assert!(r["output"].as_str().unwrap().contains("linea1"));
     assert_eq!(r["running"], false);
 }
+
+#[test]
+fn audit_log_emits_required_fields() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"cliente-test","version":"1"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"osiris_diagnose"}}"#,
+    ]
+    .join("\n");
+    let (lines, stderr, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    let plain = strip_ansi(&stderr);
+    let audit = plain.lines().find(|l| l.contains("osiris_audit"));
+    assert!(
+        audit.is_some(),
+        "debe haber un evento de auditoría: {plain}"
+    );
+    let line = audit.unwrap();
+    assert!(
+        line.contains("actor=Some(\"cliente-test\")"),
+        "actor presente: {line}"
+    );
+    assert!(
+        line.contains("tool=\"osiris_diagnose\""),
+        "tool presente: {line}"
+    );
+    assert!(line.contains("params_sha="), "params sanitizados: {line}");
+    assert!(line.contains("effect=\"read\""), "efecto presente: {line}");
+    assert!(line.contains("policy="), "política presente: {line}");
+    assert!(line.contains("duracion_us="), "duración presente: {line}");
+    assert!(
+        line.contains("resultado=\"ok\""),
+        "resultado presente: {line}"
+    );
+}
+
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            while let Some(&next) = chars.peek() {
+                chars.next();
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
