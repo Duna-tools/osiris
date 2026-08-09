@@ -546,12 +546,12 @@ func _get_editor_errors(id: Variant) -> Dictionary:
 	var errs: Array = []
 	for e in _debug_errors:
 		errs.append({
-			"file": e.file,
-			"func": e.func,
-			"line": e.line,
-			"message": e.message,
-			"descr": e.descr,
-			"warning": e.warning,
+			"file": e.get("file", ""),
+			"func": e.get("func", ""),
+			"line": e.get("line", 0),
+			"message": e.get("message", ""),
+			"descr": e.get("descr", ""),
+			"warning": e.get("warning", false),
 		})
 	return _ok(id, {"errors": errs, "running": _editor.is_playing_scene()})
 
