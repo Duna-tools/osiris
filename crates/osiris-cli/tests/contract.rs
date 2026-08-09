@@ -234,6 +234,18 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"path":".","method":"{method}","result":{{"x":1,"y":2}}}}}}"#
             )
             .unwrap();
+            } else if msg["op"] == "object_property_get" {
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"target":".","property":"position","value":{{"x":1.5,"y":2.0}}}}}}"#
+            )
+            .unwrap();
+            } else if msg["op"] == "object_property_set" {
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"target":".","property":"position","value":{{"x":9.0,"y":9.0}}}}}}"#
+            )
+            .unwrap();
             } else if msg["op"] == "save_scene" {
                 writeln!(
                     writer,
@@ -816,6 +828,29 @@ fn object_call_rejected_on_read_profile() {
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[1]["error"]["code"], -32000);
     assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
+}
+
+#[test]
+fn object_property_get_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["object.property.get"], "read");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["property"], "position");
+    assert_eq!(r["value"]["x"], 1.5);
+}
+
+#[test]
+fn object_property_set_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["object.property.set"], "edit");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["value"]["x"], 9.0);
 }
 
 #[test]

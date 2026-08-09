@@ -103,6 +103,18 @@ static TOOLS: &[ToolSpec] = &[
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "object.property.get",
+        op: Some("object_property_get"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "object.property.set",
+        op: Some("object_property_set"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.scene.save",
         op: Some("save_scene"),
         effect: Effect::Write,

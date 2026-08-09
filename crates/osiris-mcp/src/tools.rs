@@ -131,6 +131,37 @@ fn all_tools() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "object.property.get",
+            "title": "Leer propiedad de objeto",
+            "description": "Lee una propiedad de un nodo (path) o recurso (object res://).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo." },
+                    "object": { "type": "string", "description": "Ruta res:// del recurso." },
+                    "property": { "type": "string", "description": "Propiedad." }
+                },
+                "required": ["property"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "object.property.set",
+            "title": "Escribir propiedad de objeto",
+            "description": "Pone una propiedad de un nodo (con Undo/Redo) o recurso. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo." },
+                    "object": { "type": "string", "description": "Ruta res:// del recurso." },
+                    "property": { "type": "string", "description": "Propiedad." },
+                    "value": { "description": "Valor." }
+                },
+                "required": ["property", "value"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.scene.save",
             "title": "Guardar escena",
             "description": "Guarda la escena activa. Requiere perfil edit.",
@@ -450,6 +481,8 @@ pub fn call(
         | "godot.scene.remove_node"
         | "godot.scene.set_property"
         | "object.call"
+        | "object.property.get"
+        | "object.property.set"
         | "godot.scene.save"
         | "godot.run"
         | "godot.stop"

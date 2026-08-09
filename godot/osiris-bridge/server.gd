@@ -247,6 +247,10 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _remove_node(id, msg.get("params", {}))
 		"set_property":
 			return _set_property(id, msg.get("params", {}))
+		"object_property_get":
+			return _object_property_get(id, msg.get("params", {}))
+		"object_property_set":
+			return _object_property_set(id, msg.get("params", {}))
 		"call_method":
 			return _call_method(id, msg.get("params", {}))
 		"save_scene":
@@ -733,6 +737,48 @@ func _call_method(id: Variant, params: Dictionary) -> Dictionary:
 		"method": method,
 		"result": _variant_to_json(result),
 	})
+
+func _object_property_get(id: Variant, params: Dictionary) -> Dictionary:
+	var target: Object = _resolve_object(params)
+	if not target:
+		return _error(id, "godot", "nodo o recurso no encontrado")
+	var prop: String = params.get("property", "")
+	if prop == "":
+		return _error(id, "validation", "parámetro 'property' requerido")
+	var value: Variant = target.get(prop)
+	return _ok(id, {"target": _target_label(params), "property": prop, "value": _variant_to_json(value)})
+
+func _object_property_set(id: Variant, params: Dictionary) -> Dictionary:
+	var target: Object = _resolve_object(params)
+	if not target:
+		return _error(id, "godot", "nodo o recurso no encontrado")
+	var prop: String = params.get("property", "")
+	if prop == "":
+		return _error(id, "validation", "parámetro 'property' requerido")
+	var value: Variant = params.get("value")
+	var old_value: Variant = target.get(prop)
+	if target is Node:
+		target.set(prop, _json_to_variant(value))
+		_undo_redo.create_action("Osiris: %s" % prop)
+		_undo_redo.add_do_method(target, "set", prop, _json_to_variant(value))
+		_undo_redo.add_undo_method(target, "set", prop, old_value)
+		_undo_redo.commit_action()
+	else:
+		target.set(prop, _json_to_variant(value))
+	return _ok(id, {"target": _target_label(params), "property": prop, "value": _variant_to_json(target.get(prop))})
+
+## Resuelve el objeto destino: nodo por `path`, o recurso por `object` (res://).
+func _resolve_object(params: Dictionary) -> Object:
+	if params.has("object"):
+		var res_path: String = params.get("object", "")
+		if res_path != "":
+			return load(res_path)
+	return _resolve_node(params)
+
+func _target_label(params: Dictionary) -> String:
+	if params.has("object"):
+		return params.get("object", "")
+	return params.get("path", ".")
 
 func _create_node(id: Variant, params: Dictionary) -> Dictionary:
 	var parent: Node = _resolve_node(params)
