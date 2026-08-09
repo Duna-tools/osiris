@@ -9,6 +9,8 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+use osiris_domain::GodotPort;
+
 fn server_bin() -> String {
     // `osiris` y `osiris-server` son bins del mismo crate: comparten directorio.
     std::env::current_exe()
@@ -146,6 +148,24 @@ fn run_checks() -> Vec<Check> {
     checks
 }
 
+/// Check del contrato Godot (RF-13): handshake IPC con un bridge real. Solo se
+/// ejecuta si se pasan `--ipc-addr` y `--ipc-token-file`.
+fn check_godot_contract(addr: &str, token_file: &str) -> Check {
+    let token = match std::fs::read_to_string(token_file) {
+        Ok(t) => t.trim().to_string(),
+        Err(e) => return Check::new("godot-contract", false, format!("token file: {e}")),
+    };
+    let timeout = std::time::Duration::from_secs(3);
+    match osiris_ipc_client::IpcClient::connect(addr, &token, timeout) {
+        Ok(c) => Check::new(
+            "godot-contract",
+            true,
+            format!("handshake ok, godot {}", c.godot_version()),
+        ),
+        Err(e) => Check::new("godot-contract", false, format!("{e}")),
+    }
+}
+
 fn report(checks: &[Check]) {
     let mut passed = 0;
     for c in checks {
@@ -159,17 +179,38 @@ fn report(checks: &[Check]) {
 }
 
 fn main() -> std::process::ExitCode {
-    let arg = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "doctor".to_string());
-    let checks = match arg.as_str() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let sub = args.first().map(String::as_str).unwrap_or("doctor");
+    let mut ipc_addr: Option<String> = None;
+    let mut ipc_token_file: Option<String> = None;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--ipc-addr" if i + 1 < args.len() => {
+                ipc_addr = Some(args[i + 1].clone());
+                i += 2;
+            }
+            "--ipc-token-file" if i + 1 < args.len() => {
+                ipc_token_file = Some(args[i + 1].clone());
+                i += 2;
+            }
+            other => {
+                eprintln!("argumento desconocido: {other}");
+                return std::process::ExitCode::from(2);
+            }
+        }
+    }
+    let mut checks = match sub {
         "doctor" | "conformance" => run_checks(),
         other => {
             eprintln!("subcomando desconocido: {other}");
-            eprintln!("uso: osiris [doctor|conformance]");
+            eprintln!("uso: osiris [doctor|conformance] [--ipc-addr ADDR] [--ipc-token-file FILE]");
             return std::process::ExitCode::from(2);
         }
     };
+    if let (Some(addr), Some(token_file)) = (ipc_addr, ipc_token_file) {
+        checks.push(check_godot_contract(&addr, &token_file));
+    }
     report(&checks);
     if checks.iter().all(|c| c.pass) {
         std::process::ExitCode::SUCCESS
