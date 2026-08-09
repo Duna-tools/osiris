@@ -174,6 +174,12 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _connect_signal(id, msg.get("params", {}))
 		"disconnect_signal":
 			return _disconnect_signal(id, msg.get("params", {}))
+		"asset_list":
+			return _asset_list(id, msg.get("params", {}))
+		"asset_reimport":
+			return _asset_reimport(id, msg.get("params", {}))
+		"resource_assign":
+			return _resource_assign(id, msg.get("params", {}))
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -242,6 +248,70 @@ func _resolve_target_node(params: Dictionary) -> Node:
 	if node_path == "":
 		return null
 	return root.get_node_or_null(NodePath(node_path))
+
+func _asset_list(id: Variant, params: Dictionary) -> Dictionary:
+	var fs: EditorFileSystem = _editor.get_resource_filesystem()
+	var dir: EditorFileSystemDirectory = fs.get_filesystem()
+	var rel: String = params.get("path", "res://")
+	var max_total: int = clampi(params.get("max_total", 500), 1, 2000)
+	var items: Array = []
+	var has_more: bool = _collect_assets(dir, rel, items, max_total)
+	return _ok(id, {"path": rel, "items": items, "has_more": has_more, "scanning": fs.is_scanning()})
+
+func _collect_assets(dir: EditorFileSystemDirectory, rel: String, items: Array, max_total: int) -> bool:
+	var dir_path: String = dir.get_path()
+	if rel == "res://" or dir_path.begins_with(rel):
+		for i in dir.get_file_count():
+			if items.size() >= max_total:
+				return true
+			var path: String = dir.get_file_path(i)
+			items.append({
+				"path": path,
+				"type": dir.get_file_type(i),
+				"imported": dir.get_file_import_is_valid(i),
+			})
+	for i in dir.get_subdir_count():
+		if items.size() >= max_total:
+			return true
+		var sub: EditorFileSystemDirectory = dir.get_subdir(i)
+		var sub_path: String = sub.get_path()
+		if rel == "res://" or sub_path.begins_with(rel):
+			if _collect_assets(sub, rel, items, max_total):
+				return true
+	return false
+
+func _asset_reimport(id: Variant, params: Dictionary) -> Dictionary:
+	var path: String = params.get("path", "")
+	if path == "":
+		return _error(id, "validation", "parámetro 'path' requerido")
+	if not path.begins_with("res://"):
+		return _error(id, "validation", "ruta debe comenzar con res://")
+	var fs: EditorFileSystem = _editor.get_resource_filesystem()
+	fs.update_file(path)
+	return _ok(id, {"path": path, "queued": true})
+
+func _resource_assign(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var prop: String = params.get("property", "")
+	if prop == "":
+		return _error(id, "validation", "parámetro 'property' requerido")
+	var res_path: String = params.get("resource", "")
+	if res_path == "":
+		return _error(id, "validation", "parámetro 'resource' requerido")
+	if not res_path.begins_with("res://"):
+		return _error(id, "validation", "recurso debe comenzar con res://")
+	var res: Resource = load(res_path)
+	if not res:
+		return _error(id, "godot", "no se pudo cargar el recurso: %s" % res_path)
+	var old_value: Variant = node.get(prop)
+	node.set(prop, res)
+	_undo_redo.create_action("Osiris: asignar %s" % prop)
+	_undo_redo.add_do_method(node, "set", prop, res)
+	_undo_redo.add_undo_method(node, "set", prop, old_value)
+	_undo_redo.commit_action()
+	return _ok(id, {"property": prop, "resource": res_path, "assigned": true})
 
 func _describe_class(id: Variant, params: Dictionary) -> Dictionary:
 	var klass: String = params.get("class", "")

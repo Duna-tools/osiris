@@ -242,6 +242,47 @@ fn all_tools() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "godot.asset.list",
+            "title": "Listar assets",
+            "description": "Enumera archivos del proyecto (recursivo) con tipo y estado de importación.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Directorio res:// (default res://)." },
+                    "max_total": { "type": "integer", "description": "Máximo de archivos (default 500)." }
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.asset.reimport",
+            "title": "Reimportar asset",
+            "description": "Fuerza la reimportación de un archivo. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Ruta res:// a reimportar." }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.resource.assign",
+            "title": "Asignar recurso",
+            "description": "Carga un recurso res:// y lo asigna a una propiedad de un nodo con Undo/Redo. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo." },
+                    "property": { "type": "string", "description": "Propiedad a asignar." },
+                    "resource": { "type": "string", "description": "Ruta res:// del recurso (ej: res://icon.svg)." }
+                },
+                "required": ["path", "property", "resource"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -281,7 +322,10 @@ pub fn call(
         | "godot.describe"
         | "godot.signal.list"
         | "godot.signal.connect"
-        | "godot.signal.disconnect" => {
+        | "godot.signal.disconnect"
+        | "godot.asset.list"
+        | "godot.asset.reimport"
+        | "godot.resource.assign" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

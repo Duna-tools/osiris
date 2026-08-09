@@ -154,6 +154,24 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Write,
         handler: ipc_plain,
     },
+    ToolSpec {
+        name: "godot.asset.list",
+        op: Some("asset_list"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.asset.reimport",
+        op: Some("asset_reimport"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.resource.assign",
+        op: Some("resource_assign"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
 ];
 
 /// Cache de idempotencia: evita re-ejecutar lecturas repetidas (error-model.md §4).

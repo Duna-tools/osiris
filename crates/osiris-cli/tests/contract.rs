@@ -284,6 +284,24 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"disconnected":true,"signal":"pressed","target_path":"./Btn","method":"on_pressed"}}}}"#
             )
             .unwrap();
+        } else if msg["op"] == "asset_list" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"path":"res://","items":[{{"path":"res://main.tscn","type":"PackedScene","imported":true}}],"has_more":false,"scanning":false}}}}"#
+            )
+            .unwrap();
+        } else if msg["op"] == "asset_reimport" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"path":"res://icon.svg","queued":true}}}}"#
+            )
+            .unwrap();
+        } else if msg["op"] == "resource_assign" {
+            writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"property":"texture","resource":"res://icon.svg","assigned":true}}}}"#
+            )
+            .unwrap();
         } else {
             writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
         }
@@ -410,19 +428,50 @@ fn godot_props_tools_error_without_ipc() {
         assert_eq!(lines[i]["error"]["data"]["code"], "ipc");
     }
 }
-
 #[test]
-fn godot_property_over_ipc() {
+fn asset_list_over_ipc() {
     let (addr, _bridge, token_path) = fake_bridge("tok");
     thread::sleep(Duration::from_millis(100));
-    let (lines, _stderr) =
-        spawn_bridge_server(&addr, &token_path, &["godot.scene.properties"], "read");
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.asset.list"], "read");
     assert_eq!(lines.len(), 2);
-    let val: Value =
+    let r: Value =
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert_eq!(val["property"], "position");
-    assert_eq!(val["value"]["x"], 1.5);
-    assert_eq!(val["value"]["y"], 2.0);
+    assert_eq!(r["items"][0]["path"], "res://main.tscn");
+    assert_eq!(r["items"][0]["type"], "PackedScene");
+}
+
+#[test]
+fn asset_reimport_and_resource_assign_with_edit() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.asset.reimport"], "edit");
+    assert_eq!(lines.len(), 2);
+    let ri: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(ri["queued"], true);
+
+    let (addr2, _b2, tp2) = fake_bridge("tok2");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr2, &tp2, &["godot.resource.assign"], "edit");
+    assert_eq!(lines.len(), 2);
+    let ra: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(ra["assigned"], true);
+    assert_eq!(ra["property"], "texture");
+}
+
+#[test]
+fn resource_assign_rejected_on_read_profile() {
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"godot.resource.assign","arguments":{"path":".","property":"texture","resource":"res://icon.svg"}}}"#,
+    ].join("\n");
+    let (lines, _, ok) = run_server(&input);
+    assert!(ok);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["error"]["code"], -32000);
+    assert_eq!(lines[1]["error"]["data"]["code"], "authorization");
 }
 
 #[test]

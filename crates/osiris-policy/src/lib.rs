@@ -58,7 +58,9 @@ pub fn required(tool_name: &str) -> Option<Capability> {
         | "godot.scene.set_property"
         | "godot.scene.save"
         | "godot.signal.connect"
-        | "godot.signal.disconnect" => Some(Capability::GodotSceneWrite),
+        | "godot.signal.disconnect"
+        | "godot.asset.reimport"
+        | "godot.resource.assign" => Some(Capability::GodotSceneWrite),
         "godot.run" | "godot.stop" => Some(Capability::GodotRun),
         _ => None,
     }
