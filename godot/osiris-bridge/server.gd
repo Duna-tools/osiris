@@ -243,6 +243,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _get_editor_errors(id)
 		"create_node":
 			return _create_node(id, msg.get("params", {}))
+		"scene_apply":
+			return _scene_apply(id, msg.get("params", {}))
 		"remove_node":
 			return _remove_node(id, msg.get("params", {}))
 		"set_property":
@@ -779,6 +781,99 @@ func _target_label(params: Dictionary) -> String:
 	if params.has("object"):
 		return params.get("object", "")
 	return params.get("path", ".")
+
+func _scene_apply(id: Variant, params: Dictionary) -> Dictionary:
+	var operations: Array = params.get("operations", [])
+	if operations.size() == 0:
+		return _error(id, "validation", "parámetro 'operations' requerido (array)")
+	var receipts: Array = []
+	for i in operations.size():
+		var op: Dictionary = operations[i] if typeof(operations[i]) == TYPE_DICTIONARY else {}
+		var kind: String = op.get("operation", "")
+		match kind:
+			"create_node":
+				var r := _create_node(id, {"path": op.get("parent", "."), "type": op.get("type", ""), "name": op.get("name", "")})
+				receipts.append({"step": i, "operation": kind, "result": r.get("ok", r.get("error", {}))})
+			"remove_node":
+				var r := _remove_node(id, {"path": op.get("path", "")})
+				receipts.append({"step": i, "operation": kind, "result": r.get("ok", r.get("error", {}))})
+			"move_node":
+				var r := _move_node(id, {"path": op.get("path", ""), "new_parent": op.get("new_parent", ""), "new_name": op.get("new_name", "")})
+				receipts.append({"step": i, "operation": kind, "result": r.get("ok", r.get("error", {}))})
+			"set_property":
+				var r := _set_property(id, {"path": op.get("path", "."), "property": op.get("property", ""), "value": op.get("value")})
+				receipts.append({"step": i, "operation": kind, "result": r.get("ok", r.get("error", {}))})
+			"instance_scene":
+				var r := _instance_scene(id, {"path": op.get("parent", "."), "scene": op.get("scene", ""), "name": op.get("name", "")})
+				receipts.append({"step": i, "operation": kind, "result": r.get("ok", r.get("error", {}))})
+			_:
+				receipts.append({"step": i, "operation": kind, "result": {"error": "operación desconocida: %s" % kind}})
+	return _ok(id, {"receipts": receipts})
+
+## Mueve un nodo a otro padre (reparent), con Undo/Redo y nombre opcional.
+func _move_node(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	if node == _editor.get_edited_scene_root():
+		return _error(id, "godot", "no se puede mover la raíz de la escena")
+	var new_parent_raw: String = params.get("new_parent", "")
+	if new_parent_raw == "":
+		return _error(id, "validation", "parámetro 'new_parent' requerido")
+	var new_parent: Node = _resolve_path_node(new_parent_raw)
+	if not new_parent:
+		return _error(id, "godot", "nuevo padre no encontrado")
+	if new_parent.is_ancestor_of(node):
+		return _error(id, "godot", "no se puede mover un nodo a un descendiente suyo")
+	var old_parent: Node = node.get_parent()
+	var old_name: String = node.name
+	var new_name: String = params.get("new_name", "")
+	_undo_redo.create_action("Osiris: mover nodo")
+	_undo_redo.add_do_method(old_parent, "remove_child", node)
+	_undo_redo.add_do_method(new_parent, "add_child", node, true)
+	if new_name != "":
+		_undo_redo.add_do_method(node, "set_name", new_name)
+	_undo_redo.add_undo_method(new_parent, "remove_child", node)
+	_undo_redo.add_undo_method(old_parent, "add_child", node, true)
+	_undo_redo.add_undo_method(node, "set_name", old_name)
+	_undo_redo.commit_action()
+	return _ok(id, {"path": params.get("path", "."), "new_parent": new_parent_raw, "name": new_name if new_name != "" else node.name})
+
+## Instancia una escena empaquetada (res://*.tscn) como hijo de un nodo, con
+## Undo/Redo. Patrón del editor (scene_tree_dock.cpp:370).
+func _instance_scene(id: Variant, params: Dictionary) -> Dictionary:
+	var parent: Node = _resolve_node(params)
+	if not parent:
+		return _error(id, "godot", "nodo padre no encontrado")
+	var scene_path: String = params.get("scene", "")
+	if scene_path == "":
+		return _error(id, "validation", "parámetro 'scene' requerido")
+	if not scene_path.begins_with("res://"):
+		return _error(id, "validation", "escena debe comenzar con res://")
+	var packed: PackedScene = load(scene_path)
+	if not packed:
+		return _error(id, "godot", "no se pudo cargar la escena: %s" % scene_path)
+	var instance: Node = packed.instantiate()
+	var node_name: String = params.get("name", "")
+	instance.name = node_name if node_name != "" else instance.name
+	var root: Node = _editor.get_edited_scene_root()
+	_undo_redo.create_action("Osiris: instanciar escena")
+	_undo_redo.add_do_method(parent, "add_child", instance, true)
+	_undo_redo.add_do_method(instance, "set_owner", root)
+	_undo_redo.add_do_reference(instance)
+	_undo_redo.add_undo_method(parent, "remove_child", instance)
+	_undo_redo.commit_action()
+	return _ok(id, {"path": "%s/%s" % [params.get("path", "."), instance.name], "scene": scene_path, "name": instance.name})
+
+## Resuelve un NodePath relativo al root (mismo saneo que _validate_path).
+func _resolve_path_node(raw: String) -> Node:
+	var root: Node = _editor.get_edited_scene_root()
+	if not root:
+		return null
+	var node_path: String = _validate_path(raw)
+	if node_path == "":
+		return null
+	return root if node_path == "." else root.get_node_or_null(NodePath(node_path))
 
 func _create_node(id: Variant, params: Dictionary) -> Dictionary:
 	var parent: Node = _resolve_node(params)

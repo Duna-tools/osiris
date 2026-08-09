@@ -85,6 +85,12 @@ static TOOLS: &[ToolSpec] = &[
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "scene.apply",
+        op: Some("scene_apply"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.scene.remove_node",
         op: Some("remove_node"),
         effect: Effect::Write,

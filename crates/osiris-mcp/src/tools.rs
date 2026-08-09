@@ -104,6 +104,22 @@ fn all_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "path": {"type":"string"}, "type": {"type":"string"}, "name": {"type":"string"} }, "required": ["path","type","name"], "additionalProperties": false }
         }),
         json!({
+            "name": "scene.apply",
+            "title": "Aplicar operaciones de escena",
+            "description": "Ejecuta una lista de operaciones de escena (create_node, remove_node, move_node, set_property, instance_scene) en orden, cada una con Undo/Redo. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "operations": {
+                        "type": "array",
+                        "description": "Operaciones a ejecutar en orden."
+                    }
+                },
+                "required": ["operations"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.scene.remove_node",
             "title": "Eliminar nodo",
             "description": "Elimina un nodo con Undo/Redo. Requiere perfil edit.",
@@ -480,6 +496,7 @@ pub fn call(
         | "godot.scene.create_node"
         | "godot.scene.remove_node"
         | "godot.scene.set_property"
+        | "scene.apply"
         | "object.call"
         | "object.property.get"
         | "object.property.set"

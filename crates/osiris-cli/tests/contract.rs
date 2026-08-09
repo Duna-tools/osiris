@@ -215,6 +215,12 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"path":"./Sprite","type":"Node2D","name":"Sprite"}}}}"#
             )
             .unwrap();
+            } else if msg["op"] == "scene_apply" {
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"receipts":[{{"step":0,"operation":"create_node","result":{{"path":"./Sprite","name":"Sprite"}}}}]}}}}"#
+            )
+            .unwrap();
             } else if msg["op"] == "remove_node" {
                 writeln!(
                     writer,
@@ -622,6 +628,19 @@ fn write_tools_work_with_edit_profile() {
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(create["path"], "./Sprite");
     assert_eq!(create["type"], "Node2D");
+}
+
+#[test]
+fn scene_apply_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["scene.apply"], "edit");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let receipts = r["receipts"].as_array().unwrap();
+    assert_eq!(receipts[0]["operation"], "create_node");
+    assert_eq!(receipts[0]["result"]["path"], "./Sprite");
 }
 
 #[test]

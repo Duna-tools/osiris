@@ -66,6 +66,7 @@ pub fn required(tool_name: &str) -> Option<Capability> {
         | "godot.scene.remove_node"
         | "godot.scene.set_property"
         | "godot.scene.save"
+        | "scene.apply"
         | "godot.signal.connect"
         | "godot.signal.disconnect"
         | "godot.asset.reimport"
