@@ -3,6 +3,23 @@
 //! Categorías externas estables, con código, mensaje seguro y política de reintento.
 //! La causa interna viaja en logs protegidos, nunca en el mensaje externo.
 
+use serde_json::Value;
+
+/// Puerto que la aplicación necesita para operar sobre Godot (ADR-001).
+///
+/// Contrato abstracto: el dominio no conoce la implementación (addon bridge,
+/// GDExtension, Beckett...). `IpcClient` lo implementa en el crate de adaptador.
+pub trait GodotPort {
+    /// Ejecuta una orden en Godot y devuelve su resultado.
+    ///
+    /// # Errors
+    /// `DomainError` si el canal falla o Godot reporta un error.
+    fn call(&mut self, op: &str, params: Value) -> Result<Value, DomainError>;
+
+    /// Versión de Godot reportada en el handshake.
+    fn godot_version(&self) -> &str;
+}
+
 /// Categorías de error externo (error-model.md §2).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DomainError {

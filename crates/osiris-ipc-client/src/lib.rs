@@ -47,6 +47,16 @@ impl std::fmt::Debug for IpcClient {
     }
 }
 
+impl osiris_domain::GodotPort for IpcClient {
+    fn call(&mut self, op: &str, params: Value) -> Result<Value, DomainError> {
+        IpcClient::call(self, op, params)
+    }
+
+    fn godot_version(&self) -> &str {
+        &self.godot_version
+    }
+}
+
 impl IpcClient {
     /// Conecta al puente, envía `hello` y valida el ack.
     ///

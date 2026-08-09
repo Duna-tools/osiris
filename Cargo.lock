@@ -419,7 +419,6 @@ name = "osiris-application"
 version = "0.1.0"
 dependencies = [
  "osiris-domain",
- "osiris-ipc-client",
  "osiris-policy",
  "serde_json",
 ]
@@ -444,6 +443,7 @@ dependencies = [
 name = "osiris-domain"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "thiserror",
 ]
 
