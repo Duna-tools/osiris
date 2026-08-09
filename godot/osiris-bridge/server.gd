@@ -162,8 +162,6 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _get_run_status(id)
 		"get_run_output":
 			return _get_run_output(id)
-		"list_projects":
-			return _list_projects(id)
 		"assert_property":
 			return _assert_property(id, msg.get("params", {}))
 		"validate_script":
@@ -478,33 +476,6 @@ func _assert_property(id: Variant, params: Dictionary) -> Dictionary:
 	var expected: Variant = params.get("expected")
 	var match_val: bool = str(actual) == str(expected)
 	return _ok(id, {"match": match_val, "actual": _variant_to_json(actual), "expected": expected})
-
-func _list_projects(id: Variant) -> Dictionary:
-	var cfg := ConfigFile.new()
-	var data_dir: String = OS.get_data_dir()
-	# El Project Manager guarda projects.cfg en <data_dir>/godot/ en Linux,
-	# y directamente en data_dir en otras plataformas (varia por version).
-	var candidates: Array = [data_dir.path_join("godot").path_join("projects.cfg"), data_dir.path_join("projects.cfg")]
-	var cfg_path: String = ""
-	for c: String in candidates:
-		if FileAccess.file_exists(c):
-			cfg_path = c
-			break
-	if cfg_path == "":
-		return _error(id, "godot", "no se encontro projects.cfg en %s" % data_dir)
-	var err: int = cfg.load(cfg_path)
-	if err != OK:
-		return _error(id, "godot", "no se pudo leer la lista de proyectos: %s" % cfg_path)
-	var projects: Array = []
-	for project_path: String in cfg.get_sections():
-		var exists: bool = DirAccess.dir_exists_absolute(project_path)
-		projects.append({
-			"path": project_path,
-			"favorite": cfg.get_value(project_path, "favorite", false),
-			"exists": exists,
-		})
-	projects.sort_custom(func(a, b): return str(a["path"]) < str(b["path"]))
-	return _ok(id, {"projects": projects, "data_dir": data_dir})
 
 func _generate_token() -> String:
 	var bytes: PackedByteArray = PackedByteArray()

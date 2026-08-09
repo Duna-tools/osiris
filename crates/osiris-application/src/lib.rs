@@ -127,7 +127,6 @@ fn execute_tool(
         "godot.stop" => ipc_tool(ipc, "stop_project", Value::Null, plain_result()),
         "godot.run.status" => ipc_tool(ipc, "get_run_status", Value::Null, plain_result()),
         "godot.run.output" => ipc_tool(ipc, "get_run_output", Value::Null, plain_result()),
-        "godot.project.list" => ipc_tool(ipc, "list_projects", Value::Null, plain_result()),
         "godot.assert.property" => ipc_tool(ipc, "assert_property", params.clone(), plain_result()),
         "godot.script.validate" => ipc_tool(ipc, "validate_script", params.clone(), plain_result()),
         _ => Err(DomainError::Validation(format!(

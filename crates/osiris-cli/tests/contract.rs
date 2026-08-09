@@ -247,12 +247,6 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"output":"linea1\\nlinea2","running":false}}}}"#
             )
             .unwrap();
-        } else if msg["op"] == "list_projects" {
-            writeln!(
-                writer,
-                r#"{{"type":"response","id":{id},"ok":{{"projects":[{{"path":"/proyectos/demo","favorite":true,"exists":true}}],"data_dir":"/datos/godot"}}}}"#
-            )
-            .unwrap();
         } else if msg["op"] == "assert_property" {
             writeln!(
                 writer,
@@ -595,19 +589,4 @@ fn run_output_over_ipc() {
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert!(r["output"].as_str().unwrap().contains("linea1"));
     assert_eq!(r["running"], false);
-}
-
-#[test]
-fn project_list_over_ipc() {
-    let (addr, _bridge, token_path) = fake_bridge("tok");
-    thread::sleep(Duration::from_millis(100));
-    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["godot.project.list"], "read");
-    assert_eq!(lines.len(), 2);
-    let r: Value =
-        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    let p = &r["projects"][0];
-    assert_eq!(p["path"], "/proyectos/demo");
-    assert_eq!(p["favorite"], true);
-    assert_eq!(p["exists"], true);
-    assert_eq!(r["data_dir"], "/datos/godot");
 }
