@@ -459,7 +459,14 @@ func _save_scene(id: Variant) -> Dictionary:
 func _validate_path(raw: String) -> String:
 	if raw == "" or raw == ".":
 		return "."
-	if raw.contains("..") or raw.contains("//") or raw.begins_with("/"):
+	# `res://` es el prefijo legítimo de recursos; validar el resto sin `//`
+	# intermedio, manteniendo el bloqueo de traversal `..`.
+	var rest: String = raw
+	if raw.begins_with("res://"):
+		rest = raw.substr("res://".length())
+	elif raw.begins_with("/") or raw.contains(".."):
+		return ""
+	if rest.contains("..") or rest.contains("//"):
 		return ""
 	return raw
 
@@ -476,7 +483,15 @@ func _run_project(id: Variant, params: Dictionary) -> Dictionary:
 	_run_log_path = ProjectSettings.globalize_path("user://osiris_run_output.log")
 	var project_dir: String = ProjectSettings.globalize_path("res://")
 	var godot_bin: String = OS.get_executable_path()
-	var args: PackedStringArray = ["--path", project_dir, "--quit-after", "600"]
+	var args: PackedStringArray = ["--path", project_dir]
+	# `--quit-after` cuenta frames, no segundos (main.cpp). Solo se pone
+	# timeout si el cliente lo pide; sin timeout, godot.stop detiene (D-002).
+	var timeout_secs: int = int(params.get("timeout_secs", 0))
+	if timeout_secs > 0:
+		# ponytail: fps objetivo del proyecto (application/run/max_fps); si el
+		# juego corre a fps variable el timeout es aproximado. Exacto → timer real.
+		args.append("--quit-after")
+		args.append(str(timeout_secs * Engine.get_frames_per_second()))
 	if scene != "":
 		args.append(scene)
 	args.append("--log-file")
