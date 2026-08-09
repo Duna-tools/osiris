@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use crate::jsonrpc::RpcError;
 use osiris_application;
 use osiris_application::IdempotencyCache;
-use osiris_ipc_client::IpcClient;
+use osiris_domain::GodotPort;
 use osiris_policy::Profile;
 
 /// `tools/call` con nombre desconocido o argumentos inválidos.
@@ -190,7 +190,7 @@ fn all_tools() -> Vec<Value> {
 /// desconocida (spec MCP: error de protocolo, no `isError`).
 pub fn call(
     params: &Value,
-    ipc: Option<&mut IpcClient>,
+    ipc: Option<&mut dyn GodotPort>,
     profile: Profile,
     cache: &mut IdempotencyCache,
 ) -> Result<Value, RpcError> {

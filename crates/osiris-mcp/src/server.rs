@@ -105,7 +105,9 @@ impl Server {
                 let started = std::time::Instant::now();
                 let response = match crate::tools::call(
                     &request.params,
-                    self.ipc.as_mut(),
+                    self.ipc
+                        .as_mut()
+                        .map(|c| c as &mut dyn osiris_domain::GodotPort),
                     self.profile,
                     &mut self.cache,
                 ) {

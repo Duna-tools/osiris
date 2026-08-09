@@ -4,8 +4,7 @@
 //! Capa intermedia entre los adaptadores (MCP, IPC) y el dominio. Contiene la
 //! lógica de negocio que no pertenece a ningún adaptador concreto.
 
-use osiris_domain::DomainError;
-use osiris_ipc_client::IpcClient;
+use osiris_domain::{DomainError, GodotPort};
 use osiris_policy::Profile;
 use serde_json::Value;
 use std::collections::VecDeque;
@@ -71,7 +70,7 @@ fn cache_key(tool: &str, params: &Value) -> String {
 pub fn handle_tool(
     name: &str,
     params: &Value,
-    ipc: Option<&mut IpcClient>,
+    ipc: Option<&mut dyn GodotPort>,
     profile: Profile,
     cache: &mut IdempotencyCache,
 ) -> Result<Value, DomainError> {
@@ -104,13 +103,13 @@ pub fn handle_tool(
 fn execute_tool(
     name: &str,
     params: &Value,
-    ipc: Option<&mut IpcClient>,
+    ipc: Option<&mut dyn GodotPort>,
 ) -> Result<Value, DomainError> {
     match name {
         "osiris_diagnose" => Ok(osiris_diagnose()),
         "godot_diagnose" => ipc_tool(ipc, "get_version", Value::Null, |client, result| {
             serde_json::json!({
-                "godot_version": client.godot_version,
+                "godot_version": client.godot_version(),
                 "godot_details": result,
             })
         }),
@@ -148,7 +147,7 @@ fn osiris_diagnose() -> Value {
     })
 }
 
-fn plain_result() -> fn(&IpcClient, &Value) -> Value {
+fn plain_result() -> fn(&dyn GodotPort, &Value) -> Value {
     |_, result| result.clone()
 }
 
@@ -157,10 +156,10 @@ fn plain_result() -> fn(&IpcClient, &Value) -> Value {
 /// # Errors
 /// Devuelve `Err` si el IPC no está configurado o la llamada al puente falla.
 fn ipc_tool(
-    ipc: Option<&mut IpcClient>,
+    ipc: Option<&mut dyn GodotPort>,
     op: &str,
     params: Value,
-    transform: impl FnOnce(&IpcClient, &Value) -> Value,
+    transform: impl FnOnce(&dyn GodotPort, &Value) -> Value,
 ) -> Result<Value, DomainError> {
     let client = ipc.ok_or_else(|| {
         DomainError::Ipc("el puente Godot no está configurado (usa --ipc-addr)".to_string())

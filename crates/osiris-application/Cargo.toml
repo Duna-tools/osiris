@@ -11,6 +11,5 @@ categories.workspace = true
 
 [dependencies]
 osiris-domain.workspace = true
-osiris-ipc-client.workspace = true
 osiris-policy.workspace = true
 serde_json = "1.0.151"
