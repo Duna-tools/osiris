@@ -153,12 +153,6 @@ fn all_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
         json!({
-            "name": "godot.project.list",
-            "title": "Proyectos conocidos",
-            "description": "Lista los proyectos registrados en el Project Manager de Godot (ruta, favorito, existencia). Solo lectura.",
-            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
-        }),
-        json!({
             "name": "godot.assert.property",
             "title": "Verificar propiedad",
             "description": "Compara el valor de una propiedad con un esperado. Devuelve match (bool) y el valor real.",
@@ -220,7 +214,6 @@ pub fn call(
         | "godot.stop"
         | "godot.run.status"
         | "godot.run.output"
-        | "godot.project.list"
         | "godot.assert.property"
         | "godot.script.validate" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
