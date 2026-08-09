@@ -20,6 +20,14 @@ func request_inspect(ids: Array) -> void:
 	if _session:
 		_session.send_message("scene:inspect_objects", [ids, false])
 
+var _screenshot_id: int = 0
+
+func request_screenshot() -> int:
+	_screenshot_id += 1
+	if _session:
+		_session.send_message("scene:rq_screenshot", [_screenshot_id])
+	return _screenshot_id
+
 func enable_metrics() -> void:
 	if _session:
 		_session.toggle_profiler("performance", true, [])

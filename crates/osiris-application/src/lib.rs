@@ -276,6 +276,12 @@ static TOOLS: &[ToolSpec] = &[
         effect: Effect::Read,
         handler: ipc_plain,
     },
+    ToolSpec {
+        name: "runtime.capture",
+        op: Some("runtime_capture"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
 ];
 
 /// Skill: conocimiento declarativo de cómo resolver una intención con tools

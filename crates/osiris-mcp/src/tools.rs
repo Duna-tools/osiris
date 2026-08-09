@@ -480,6 +480,12 @@ fn all_tools() -> Vec<Value> {
                 "additionalProperties": false
             }
         }),
+        json!({
+            "name": "runtime.capture",
+            "title": "Capturar screenshot del juego",
+            "description": "Pide al juego en ejecución un screenshot; devuelve la ruta del PNG guardado en temp. Solo lectura.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
     ]
 }
 
@@ -538,7 +544,8 @@ pub fn call(
         | "osiris.capabilities"
         | "godot.runtime.tree"
         | "godot.runtime.metrics"
-        | "debug.inspect" => {
+        | "debug.inspect"
+        | "runtime.capture" => {
             let args = params.get("arguments").unwrap_or(&Value::Null);
             osiris_application::handle_tool(name, args, ipc, profile, cache)
                 .map_err(|e| RpcError::from_domain(&e))

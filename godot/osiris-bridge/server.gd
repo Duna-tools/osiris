@@ -43,6 +43,7 @@ var _debug_metric_names: Array = []
 var _debug_metrics: Array = []
 var _debug_inspect: Array = []
 var _controller: Object = null
+var _debug_screenshot_path: String = ""
 
 func set_controller(c: Object) -> void:
 	_controller = c
@@ -65,6 +66,10 @@ func _on_debug_data(msg: String, data: Variant) -> void:
 		_debug_metrics = data
 	elif msg == "scene:inspect_objects":
 		_debug_inspect = data
+	elif msg == "game_view:get_screenshot":
+		# [id, w, h, path] — el juego ya guardó el PNG en temp (scene_debugger.cpp:534).
+		if typeof(data) == TYPE_ARRAY and data.size() >= 4:
+			_debug_screenshot_path = data[3]
 
 func _append_tree(data: Variant) -> void:
 	if typeof(data) != TYPE_ARRAY:
@@ -302,6 +307,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _runtime_metrics(id)
 		"debug_inspect":
 			return _handle_debug_inspect(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
+		"runtime_capture":
+			return _runtime_capture(id)
 		_:
 			return _error(id, "validation", "operación desconocida: %s" % op, false)
 
@@ -1098,6 +1105,17 @@ func _inspect_obj_to_json(obj: Array) -> Dictionary:
 		"class": obj[1],
 		"properties": props,
 	}
+
+func _runtime_capture(id: Variant) -> Dictionary:
+	# Screenshot del juego (MVP4): pide al juego capturar y devuelve la ruta del
+	# PNG que ya guardó en temp (vía game_view:get_screenshot).
+	if not _editor.is_playing_scene():
+		return _error(id, "godot", "no hay juego en ejecución")
+	if _controller:
+		_controller.request_screenshot()
+	# La respuesta llega por debug_data en el siguiente poll; si aún no llegó,
+	# devolver la última ruta capturada (o vacía la primera vez).
+	return _ok(id, {"path": _debug_screenshot_path, "running": true, "note": "consulta de nuevo si la ruta está vacía (el juego tarda un frame)"})
 
 func _runtime_metrics(id: Variant) -> Dictionary:
 	# Monitores del juego (performance:profile_frame). Los nombres estándar de

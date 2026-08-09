@@ -376,6 +376,12 @@ fn fake_bridge(token: &str) -> (String, thread::JoinHandle<()>, String) {
                 r#"{{"type":"response","id":{id},"ok":{{"id":7,"inspect":[{{"id":7,"class":"Button","properties":{{"text":"Click"}}}}]}}}}"#
             )
             .unwrap();
+            } else if msg["op"] == "runtime_capture" {
+                writeln!(
+                writer,
+                r#"{{"type":"response","id":{id},"ok":{{"path":"/tmp/scr-123.png","running":true}}}}"#
+            )
+            .unwrap();
             } else {
                 writeln!(writer, r#"{{"type":"response","id":{id},"ok":{{}}}}"#).unwrap();
             }
@@ -536,6 +542,17 @@ fn debug_inspect_over_ipc() {
         serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(r["id"], 7);
     assert_eq!(r["inspect"][0]["class"], "Button");
+}
+
+#[test]
+fn runtime_capture_over_ipc() {
+    let (addr, _bridge, token_path) = fake_bridge("tok");
+    thread::sleep(Duration::from_millis(100));
+    let (lines, _) = spawn_bridge_server(&addr, &token_path, &["runtime.capture"], "read");
+    assert_eq!(lines.len(), 2);
+    let r: Value =
+        serde_json::from_str(lines[1]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(r["path"], "/tmp/scr-123.png");
 }
 
 #[test]
