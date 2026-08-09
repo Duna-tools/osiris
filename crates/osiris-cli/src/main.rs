@@ -22,7 +22,11 @@ fn connect_ipc(cfg: &config::Config) -> Option<osiris_ipc_client::IpcClient> {
         })
         .unwrap_or_default();
 
-    match osiris_ipc_client::IpcClient::connect(addr, &token, std::time::Duration::from_secs(3)) {
+    match osiris_ipc_client::IpcClient::connect(
+        addr,
+        &token,
+        std::time::Duration::from_millis(cfg.ipc_timeout_ms),
+    ) {
         Ok(client) => {
             info!(
                 godot = %client.godot_version,
