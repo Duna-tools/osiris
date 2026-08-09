@@ -22,7 +22,21 @@ pub struct IpcClient {
     next_id: u64,
     /// Versión de Godot reportada por el puente en el handshake.
     pub godot_version: String,
+    /// Configuración retenida para reconexión (UC-050).
+    addr: String,
+    token: String,
+    timeout: Duration,
 }
+
+/// Operaciones mutables: jamás se reintentan automáticamente (UC-050).
+const MUTATING_OPS: &[&str] = &[
+    "create_node",
+    "remove_node",
+    "set_property",
+    "save_scene",
+    "run_project",
+    "stop_project",
+];
 
 impl std::fmt::Debug for IpcClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -62,6 +76,9 @@ impl IpcClient {
             reader: BufReader::new(stream),
             next_id: 1,
             godot_version: String::new(),
+            addr: addr.to_string(),
+            token: token.to_string(),
+            timeout,
         };
         client.send(&ClientMessage::hello(token))?;
         match client.recv()? {
@@ -82,9 +99,24 @@ impl IpcClient {
     /// Envía una orden y espera su respuesta (por id). Otras respuestas se
     /// descartan (no hay multiplexación hoy: una solicitud en vuelo).
     ///
+    /// Si la operación es de **lectura** y el canal IPC se rompe, reconecta una
+    /// vez y reintenta (UC-050). Las operaciones mutables jamás se reintentan
+    /// automáticamente: devuelven el error para que el llamador decida.
+    ///
     /// # Errors
     /// `Timeout`, `Ipc` o el `DomainError` que reporte el puente.
     pub fn call(&mut self, op: &str, params: Value) -> Result<Value, DomainError> {
+        match self.call_once(op, params.clone()) {
+            Err(DomainError::Ipc(_)) if !MUTATING_OPS.contains(&op) => {
+                tracing::warn!(op, "canal IPC roto en lectura; reconectando");
+                self.reconnect()?;
+                self.call_once(op, params)
+            }
+            result => result,
+        }
+    }
+
+    fn call_once(&mut self, op: &str, params: Value) -> Result<Value, DomainError> {
         let id = self.next_id;
         self.next_id += 1;
         self.send(&ClientMessage::Request {
@@ -103,6 +135,13 @@ impl IpcClient {
                 _ => {} // ignore non-matching id responses
             }
         }
+    }
+
+    /// Reconecta al mismo puente y renegocia versión y token (UC-050).
+    fn reconnect(&mut self) -> Result<(), DomainError> {
+        let fresh = Self::connect(&self.addr, &self.token, self.timeout)?;
+        *self = fresh;
+        Ok(())
     }
 
     /// Cancelación best-effort (el puente puede ignorarla si ya terminó).
@@ -303,5 +342,93 @@ mod tests {
         let err = client.call("get_open_scene", Value::Null).unwrap_err();
         assert!(matches!(err, DomainError::Godot(_)));
         assert_eq!(err.code(), "godot");
+    }
+
+    #[test]
+    fn read_call_reconnects_after_bridge_restart() {
+        // Puente falso que acepta 2 conexiones: la 1ª responde error IPC (canal
+        // roto), la 2ª responde ok (puente reiniciado).
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let accepts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = std::sync::Arc::clone(&accepts);
+        thread::spawn(move || {
+            // Conexión 1: handshake ok, luego error Ipc en el request.
+            let (s1, _) = listener.accept().unwrap();
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut r1 = BufReader::new(s1.try_clone().unwrap());
+            let mut line = String::new();
+            r1.read_line(&mut line).unwrap();
+            send(
+                &mut s1.try_clone().unwrap(),
+                &BridgeMessage::HelloAck {
+                    protocol: PROTOCOL_VERSION,
+                    godot: "4.5.1".into(),
+                },
+            );
+            let mut line = String::new();
+            r1.read_line(&mut line).unwrap();
+            let msg: serde_json::Value = serde_json::from_str(&line).unwrap();
+            let id = msg["id"].as_u64().unwrap();
+            send(
+                &mut s1.try_clone().unwrap(),
+                &BridgeMessage::err(
+                    id,
+                    IpcError {
+                        code: "ipc".into(),
+                        message: "canal roto".into(),
+                        retryable: true,
+                    },
+                ),
+            );
+            // Conexión 2: handshake ok + responde el request.
+            let (s2, _) = listener.accept().unwrap();
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut r2 = BufReader::new(s2.try_clone().unwrap());
+            let mut line = String::new();
+            r2.read_line(&mut line).unwrap();
+            send(
+                &mut s2.try_clone().unwrap(),
+                &BridgeMessage::HelloAck {
+                    protocol: PROTOCOL_VERSION,
+                    godot: "4.5.1".into(),
+                },
+            );
+            let mut line = String::new();
+            r2.read_line(&mut line).unwrap();
+            let msg: serde_json::Value = serde_json::from_str(&line).unwrap();
+            let id = msg["id"].as_u64().unwrap();
+            send(
+                &mut s2.try_clone().unwrap(),
+                &BridgeMessage::ok(id, serde_json::json!({"ok": true})),
+            );
+        });
+
+        let mut client = IpcClient::connect(&addr, "tok", Duration::from_secs(2)).unwrap();
+        let v = client.call("get_version", Value::Null).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(accepts.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn mutating_call_does_not_retry_on_broken_channel() {
+        // Puente que responde error Ipc; la op mutable NO debe reconectar
+        // (el puente solo acepta 1 conexión → si reintentara, colgaría).
+        let addr = fake_bridge(|mut reader, mut stream| {
+            let _ = read_line(&mut reader);
+            send(
+                &mut stream,
+                &BridgeMessage::HelloAck {
+                    protocol: PROTOCOL_VERSION,
+                    godot: "4.5.1".into(),
+                },
+            );
+            let _ = read_line(&mut reader);
+            // no respondemos nada → el socket cierra al salir del closure
+        });
+        let mut client = IpcClient::connect(&addr, "tok", Duration::from_secs(2)).unwrap();
+        let err = client.call("set_property", Value::Null).unwrap_err();
+        // Timeout o Ipc, pero NUNCA un segundo intento de conexión.
+        assert!(matches!(err, DomainError::Ipc(_) | DomainError::Timeout(_)));
     }
 }
