@@ -187,6 +187,18 @@ static TOOLS: &[ToolSpec] = &[
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "godot.project.settings.get",
+        op: Some("project_settings_get"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.project.settings.set",
+        op: Some("project_settings_set"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.asset.reimport",
         op: Some("asset_reimport"),
         effect: Effect::Write,

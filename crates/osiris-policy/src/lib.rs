@@ -72,6 +72,7 @@ pub fn required(tool_name: &str) -> Option<Capability> {
         | "godot.resource.assign"
         | "godot.script.write"
         | "object.call"
+        | "godot.project.settings.set"
         | "plan.execute" => Some(Capability::GodotSceneWrite),
         "godot.run" | "godot.stop" => Some(Capability::GodotRun),
         _ => None,

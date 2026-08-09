@@ -278,6 +278,10 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _asset_list(id, msg.get("params", {}))
 		"project_files":
 			return _project_files(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
+		"project_settings_get":
+			return _project_settings_get(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
+		"project_settings_set":
+			return _project_settings_set(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
 		"asset_reimport":
 			return _asset_reimport(id, msg.get("params", {}))
 		"resource_assign":
@@ -389,6 +393,30 @@ func _collect_project_files(dir_path: String, items: Array, max_total: int) -> v
 				f.close()
 		entry = dir.get_next()
 	dir.list_dir_end()
+
+func _project_settings_get(id: Variant, params: Dictionary) -> Dictionary:
+	var names: Array = params.get("names", [])
+	var single: String = params.get("name", "")
+	if single != "":
+		names.append(single)
+	if names.size() == 0:
+		return _error(id, "validation", "parámetro 'names' o 'name' requerido")
+	var settings: Dictionary = {}
+	for n in names:
+		var key: String = str(n)
+		settings[key] = _variant_to_json(ProjectSettings.get_setting_with_override(key))
+	return _ok(id, {"settings": settings})
+
+func _project_settings_set(id: Variant, params: Dictionary) -> Dictionary:
+	var name: String = params.get("name", "")
+	if name == "":
+		return _error(id, "validation", "parámetro 'name' requerido")
+	var value: Variant = params.get("value")
+	ProjectSettings.set_setting(name, _json_to_variant(value))
+	var err: int = ProjectSettings.save()
+	if err != OK:
+		return _error(id, "godot", "no se pudo guardar project.godot (código %d)" % err)
+	return _ok(id, {"name": name, "saved": true, "value": _variant_to_json(ProjectSettings.get_setting_with_override(name))})
 
 func _asset_list(id: Variant, params: Dictionary) -> Dictionary:
 	var fs: EditorFileSystem = _editor.get_resource_filesystem()

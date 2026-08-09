@@ -297,6 +297,33 @@ fn all_tools() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "godot.project.settings.get",
+            "title": "Leer settings del proyecto",
+            "description": "Lee settings de project.godot (application/config/name, display/window/...).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Una setting (ej: application/config/name)." },
+                    "names": { "type": "array", "description": "Varias settings." }
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.project.settings.set",
+            "title": "Escribir settings del proyecto",
+            "description": "Pone una setting y guarda project.godot. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Setting (ej: application/config/name)." },
+                    "value": { "description": "Valor." }
+                },
+                "required": ["name", "value"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.asset.reimport",
             "title": "Reimportar asset",
             "description": "Fuerza la reimportación de un archivo. Requiere perfil edit.",
@@ -437,6 +464,8 @@ pub fn call(
         | "godot.signal.disconnect"
         | "godot.asset.list"
         | "godot.project.files"
+        | "godot.project.settings.get"
+        | "godot.project.settings.set"
         | "godot.asset.reimport"
         | "godot.resource.assign"
         | "plan.validate"
