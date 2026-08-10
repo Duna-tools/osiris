@@ -1246,3 +1246,9 @@ func _write_token() -> void:
 	if f:
 		f.store_string(_token)
 		f.close()
+	# Ruta estable por proyecto (no depende del nombre, que cambia user://).
+	# El wrapper de opencode la lee para conectar el MCP server al bridge.
+	var stable: FileAccess = FileAccess.open("res://.godot/osiris_ipc_token", FileAccess.WRITE)
+	if stable:
+		stable.store_string(_token)
+		stable.close()
