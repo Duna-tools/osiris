@@ -111,7 +111,7 @@ implementación tomadas durante el desarrollo de Osiris que no están en el vaul
 | ID | Ítem | Severidad | Estado |
 |---|---|---|---|
 | TD-001 | Contrato IPC provisional JSON | Media | Resuelto: T-034 confirma JSON (D-002) |
-| TD-002 | Matriz limitada de Godot | Alta | **Cubierta por reflexión**: `godot.describe` (ClassDB) + `osiris.capabilities` (RF-12) hacen el catálogo dinámico; la surface se validará con clientes MCP reales cuando existan |
+| TD-002 | Matriz limitada de Godot | Alta | **Cubierta por reflexión y validada**: `godot.describe` (ClassDB) + `osiris.capabilities` (RF-12) + flujo E2E (crear escena, script, asignar, ejecutar, observar) verificado contra Godot 4.7 real |
 | TD-003 | Política de plugins no definida | Media | **Resuelto 2026-08-09 (D-008)**: sin plugins dinámicos, registro estático |
 | TD-004 | Persistencia de journal no seleccionada | Alta | **Resuelto 2026-08-09**: `--audit-file` persiste eventos `osiris_audit` en JSONL (RF-14) |
 | TD-005 | Clientes MCP en CI | Media | **Resuelto 2026-08-09**: `osiris conformance` (cliente stdio real) en CI; harness por cliente externo cuando exista release |
