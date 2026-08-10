@@ -92,6 +92,20 @@ implementación tomadas durante el desarrollo de Osiris que no están en el vaul
   `application`. Si aparece un caso real de plugins dinámicos, se diseñará
   como una interfaz de registro (factory) expuesta, no como un host de scripts.
 
+### D-009 — MVP5: run history sin Loco/REST (2026-08-09)
+
+- **Contexto:** el roadmap MVP5 pide Loco.rs control plane (REST + SQLite +
+  run history + BackgroundAsync). El ADR-006 lo marca como **opcional**.
+- **Decisión (ponytail):** el valor real de MVP5 es el **historial de
+  ejecuciones persistido y consultable**. Se implementa como JSONL append en
+  `user://osiris_run_history.jsonl` (patrón del audit, TD-004) + tool
+  `osiris.run.history`. Sin Loco, sin REST, sin SQLite, sin BackgroundAsync.
+- **Consecuencias:** el LLM ve el historial de runs (escena, duración, salida,
+  errores) sin andamiaje de framework. REST/SQLite/Loco quedan documentados en
+  el roadmap; se añadirán solo si hay un consumidor remoto real (el ADR-006
+  permite añadirlos sin alterar el core). BackgroundAsync contradice D-004
+  (modelo síncrono) y no se implementa sin un caso de uso.
+
 ## Deuda técnica
 
 | ID | Ítem | Severidad | Estado |

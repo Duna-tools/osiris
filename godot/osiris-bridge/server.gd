@@ -44,6 +44,10 @@ var _debug_metrics: Array = []
 var _debug_inspect: Array = []
 var _controller: Object = null
 var _debug_screenshot_path: String = ""
+const RUN_HISTORY_FILE := "user://osiris_run_history.jsonl"
+const RUN_HISTORY_MAX := 200
+var _run_start_ms: int = 0
+var _run_started_scene: String = ""
 
 func set_controller(c: Object) -> void:
 	_controller = c
@@ -146,8 +150,13 @@ func poll() -> void:
 	_busy = true
 	# Timeout de ejecución real (segundos), no frames (RF-09).
 	if _run_deadline_ms > 0 and Time.get_ticks_msec() >= _run_deadline_ms:
+		print("[OsirisBridge] timeout poll: %d vs deadline %d" % [Time.get_ticks_msec(), _run_deadline_ms])
 		_run_deadline_ms = 0
 		_editor.stop_playing_scene()
+		_record_run_stop("timeout")
+	elif _run_start_ms > 0 and not _editor.is_playing_scene():
+		# El juego terminó solo; registrar el fin una vez.
+		_record_run_stop("finished")
 	_accept()
 	var start_time: int = Time.get_ticks_msec()
 	var processed_count: int = 0
@@ -275,6 +284,8 @@ func _request(msg: Dictionary) -> Dictionary:
 			return _get_run_status(id)
 		"get_run_output":
 			return _get_run_output(id)
+		"run_history":
+			return _run_history(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
 		"assert_property":
 			return _assert_property(id, msg.get("params", {}))
 		"validate_script":
@@ -1022,19 +1033,94 @@ func _run_project(id: Variant, params: Dictionary) -> Dictionary:
 	# Timeout real en segundos, revisado en poll() (no frames).
 	var timeout_secs: int = int(params.get("timeout_secs", 0))
 	_run_deadline_ms = Time.get_ticks_msec() + timeout_secs * 1000 if timeout_secs > 0 else 0
+	# Historial de ejecución (MVP5): marca inicio.
+	_run_start_ms = Time.get_ticks_msec()
+	_run_started_scene = scene if scene != "" else "main"
 	return _ok(id, {"running": true, "scene": scene if scene != "" else "main", "pid": 0})
 
 
 func _stop_project(id: Variant) -> Dictionary:
 	_run_deadline_ms = 0
 	_editor.stop_playing_scene()
+	_record_run_stop("stopped")
 	return _ok(id, {"running": false})
 
 func _get_run_status(id: Variant) -> Dictionary:
 	var running: bool = _editor.is_playing_scene()
 	if not running:
 		_run_deadline_ms = 0
+		if _run_start_ms > 0:
+			_record_run_stop("finished")
 	return _ok(id, {"running": running})
+
+## Registra el fin de una ejecución en el historial JSONL (MVP5).
+func _record_run_stop(reason: String) -> void:
+	var duration_ms: int = Time.get_ticks_msec() - _run_start_ms
+	var output: Array = _debug_output
+	var tail: Array = output.slice(maxi(output.size() - 30, 0))
+	var errors: Array = []
+	for e in _debug_errors:
+		errors.append({
+			"file": e.get("file", ""),
+			"line": e.get("line", 0),
+			"message": e.get("message", ""),
+			"warning": e.get("warning", false),
+		})
+	var entry := {
+		"started_at": Time.get_datetime_string_from_system(),
+		"scene": _run_started_scene,
+		"duration_ms": duration_ms,
+		"reason": reason,
+		"output_tail": "\n".join(tail),
+		"error_count": errors.size(),
+		"errors": errors,
+	}
+	# Append JSONL: leer lo existente (si hay), añadir la línea, reescribir.
+	# `user://` no siempre permite READ_WRITE en headless; WRITE es fiable.
+	var lines: Array = []
+	var r: FileAccess = FileAccess.open(RUN_HISTORY_FILE, FileAccess.READ)
+	if r:
+		while not r.eof_reached():
+			var line: String = r.get_line()
+			if line.strip_edges() != "":
+				lines.append(line)
+		r.close()
+	lines.append(JSON.stringify(entry))
+	if lines.size() > RUN_HISTORY_MAX:
+		lines = lines.slice(lines.size() - RUN_HISTORY_MAX)
+	var w: FileAccess = FileAccess.open(RUN_HISTORY_FILE, FileAccess.WRITE)
+	if w:
+		for l in lines:
+			w.store_line(l)
+		w.close()
+		_run_start_ms = 0
+		_run_started_scene = ""
+	else:
+		push_error("[OsirisBridge] no se pudo escribir el historial: %s" % RUN_HISTORY_FILE)
+		_run_start_ms = 0
+		_run_started_scene = ""
+
+## Lee el historial de ejecuciones (MVP5): últimos N runs, o los de una escena.
+func _run_history(id: Variant, params: Dictionary) -> Dictionary:
+	var max_entries: int = clampi(params.get("max_entries", 50), 1, RUN_HISTORY_MAX)
+	var scene_filter: String = params.get("scene", "")
+	var entries: Array = []
+	var f: FileAccess = FileAccess.open(RUN_HISTORY_FILE, FileAccess.READ)
+	if f:
+		var lines: Array = []
+		while not f.eof_reached():
+			var line: String = f.get_line()
+			if line.strip_edges() != "":
+				lines.append(line)
+		f.close()
+		var start: int = maxi(lines.size() - max_entries, 0)
+		for i in range(start, lines.size()):
+			var json := JSON.new()
+			if json.parse(lines[i]) == OK:
+				var entry: Dictionary = json.get_data()
+				if scene_filter == "" or entry.get("scene", "") == scene_filter:
+					entries.append(entry)
+	return _ok(id, {"entries": entries, "total": entries.size()})
 
 func _get_run_output(id: Variant) -> Dictionary:
 	var lines: Array = _debug_output

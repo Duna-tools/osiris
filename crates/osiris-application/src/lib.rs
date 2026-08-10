@@ -151,6 +151,12 @@ static TOOLS: &[ToolSpec] = &[
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "osiris.run.history",
+        op: Some("run_history"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.assert.property",
         op: Some("assert_property"),
         effect: Effect::Read,

@@ -215,6 +215,19 @@ fn all_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
         json!({
+            "name": "osiris.run.history",
+            "title": "Historial de ejecuciones",
+            "description": "Historial persistido de ejecuciones del proyecto (escena, duración, salida, errores). Solo lectura.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "max_entries": { "type": "integer", "description": "Máximo de entradas (default 50)." },
+                    "scene": { "type": "string", "description": "Filtrar por escena (ej: res://main.tscn)." }
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.assert.property",
             "title": "Verificar propiedad",
             "description": "Compara el valor de una propiedad con un esperado. Devuelve match (bool) y el valor real.",
@@ -524,6 +537,7 @@ pub fn call(
         | "godot.stop"
         | "godot.run.status"
         | "godot.run.output"
+        | "osiris.run.history"
         | "godot.assert.property"
         | "godot.script.validate"
         | "godot.script.write"
