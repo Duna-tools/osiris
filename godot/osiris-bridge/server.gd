@@ -580,12 +580,64 @@ func _validate_script(id: Variant, params: Dictionary) -> Dictionary:
 	var code: String = params.get("code", "")
 	if code == "":
 		return _error(id, "validation", "parámetro 'code' requerido")
+	# Primero un reload rápido (parse interno) para el caso sin errores.
 	var script := GDScript.new()
 	script.source_code = code
-	var err: int = script.reload()
-	if err != OK:
-		return _error(id, "validation", "error de sintaxis en el script (código %d)" % err)
-	return _ok(id, {"valid": true})
+	if script.reload() == OK:
+		return _ok(id, {"valid": true})
+	# Con error, lanza `godot --check-only` sobre el código en disco para obtener
+	# el mensaje con la línea exacta (el reload interno no expone el detalle).
+	var tmp_path: String = "res://.osiris_validate_tmp.gd"
+	var w: FileAccess = FileAccess.open(tmp_path, FileAccess.WRITE)
+	if not w:
+		return _error(id, "godot", "no se pudo crear el temporal de validación")
+	w.store_string(code)
+	w.close()
+	var out: Array = []
+	var exit_code: int = OS.execute(
+		OS.get_executable_path(),
+		["--headless", "--path", ProjectSettings.globalize_path("res://"), "--check-only", "--script", tmp_path],
+		out,
+		true,
+	)
+	var errors: Array = _parse_check_errors(out)
+	var tmp_abs: String = ProjectSettings.globalize_path(tmp_path)
+	if DirAccess.dir_exists_absolute(tmp_abs.get_base_dir()):
+		DirAccess.remove_absolute(tmp_abs)
+	if exit_code == 0:
+		return _ok(id, {"valid": true})
+	# El detalle (mensaje + línea) se devuelve como resultado, no como error de
+	# dominio: FND-004 limita el mensaje MCP al código estable, y el LLM necesita
+	# saber DÓNDE está el error para corregirlo.
+	return _ok(id, {"valid": false, "errors": errors})
+
+## Extrae los errores "SCRIPT ERROR: ... at: <archivo>:<línea>" del stderr.
+func _parse_check_errors(out: Array) -> Array:
+	var errors: Array = []
+	var stderr: String = ""
+	for o in out:
+		if typeof(o) == TYPE_STRING:
+			stderr += str(o)
+	var pending: Dictionary = {}
+	for line: String in stderr.split("\n"):
+		var line_txt: String = line.strip_edges()
+		if line_txt.begins_with("SCRIPT ERROR:"):
+			var msg: String = line_txt.trim_prefix("SCRIPT ERROR:")
+			pending = {"message": msg.strip_edges()}
+		elif line_txt.begins_with("at:") and not pending.is_empty():
+			var at: String = line_txt.trim_prefix("at:")
+			# Solo conservar el error si su "at:" apunta al archivo validado
+			# (evita el ruido de la carga interna de Godot con su propia línea).
+			if at.contains(".osiris_validate_tmp.gd:"):
+				var line_no: int = 0
+				var m := RegEx.create_from_string(r":(\d+)")
+				var m_res := m.search(at)
+				if m_res:
+					line_no = int(m_res.get_string(1))
+				pending["line"] = line_no
+				errors.append(pending)
+			pending = {}
+	return errors
 
 
 func _get_version(id: Variant) -> Dictionary:
