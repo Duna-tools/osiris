@@ -1,0 +1,40 @@
+---
+name: Bug report
+description: Reportar un problema con Osiris
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Gracias por reportar. Incluye la información necesaria para reproducir."
+  - type: input
+    id: godot-version
+    attributes:
+      label: Versión de Godot
+      placeholder: "4.7.1"
+    validations:
+      required: true
+  - type: input
+    id: osiris-version
+    attributes:
+      label: Versión de Osiris
+      description: "Salida de `osiris conformance` o versión del commit"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Pasos para reproducir
+      description: "Qué tools/operaciones ejecutaste"
+      placeholder: |
+        1. Godot abierto con el addon Osiris Bridge
+        2. `godot.scene.create_node` con ...
+        3. Resultado esperado vs obtenido
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Salida de stderr del servidor (usa `--log-level debug`)"
+      render: shell

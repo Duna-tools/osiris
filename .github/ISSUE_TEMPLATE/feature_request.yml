@@ -1,0 +1,28 @@
+---
+name: Feature request
+description: Sugerir una mejora o herramienta nueva
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: "Describe la necesidad y el caso de uso. Si es una herramienta MCP nueva, revisa el catálogo de capacidades del vault primero."
+  - type: textarea
+    id: need
+    attributes:
+      label: Problema / necesidad
+      description: "Qué no se puede hacer hoy con Osiris"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+      description: "Solución sugerida (tool, capability, cambio de comportamiento)"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto adicional
+      description: "Capturas, docs del vault, requisitos (RF-XX) relacionados"
