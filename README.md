@@ -12,7 +12,7 @@ English | [Español](#espanol)
 ![edition](https://img.shields.io/badge/edition-2024-blue)
 ![os](https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-lightgrey)
 ![godot](https://img.shields.io/badge/godot-4.x-green)
-![license](https://img.shields.io/badge/license-MIT-blue)
+![license](https://img.shields.io/badge/license-Apache_2.0-blue)
 
 </div>
 
@@ -186,7 +186,9 @@ The suite covers lifecycle, handshake, stdout purity, size limits, capability au
 
 ## License
 
-Released under the [MIT license](LICENSE).
+Released under the [Apache 2.0 license](LICENSE).
+
+Copyright (c) 2026 Duna-tools.
 
 ---
 
@@ -203,7 +205,7 @@ Español | [English](#english)
 ![edition](https://img.shields.io/badge/edition-2024-blue)
 ![os](https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-lightgrey)
 ![godot](https://img.shields.io/badge/godot-4.x-green)
-![license](https://img.shields.io/badge/license-MIT-blue)
+![license](https://img.shields.io/badge/license-Apache_2.0-blue)
 
 </div>
 
@@ -377,4 +379,4 @@ La suite cubre ciclo de vida, handshake, pureza de stdout, límites de tamaño, 
 
 ## Licencia
 
-Publicado bajo la [licencia MIT](LICENSE).
+Publicado bajo la [licencia Apache 2.0](LICENSE).

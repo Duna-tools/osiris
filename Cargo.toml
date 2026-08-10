@@ -14,7 +14,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "Apache-2.0"
 description = "MCP server for Godot project inspection, modification and execution"
 repository = "https://github.com/Duna-tools/osiris"
 readme = "README.md"
