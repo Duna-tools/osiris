@@ -16,7 +16,7 @@ English | [Español](#espanol)
 
 </div>
 
-**Osiris is a local MCP (Model Context Protocol) server that inspects, modifies and controls Godot projects. A Rust core talks to a GDScript bridge running inside the Godot editor over TCP loopback, giving MCP clients (Claude Desktop, Cursor, VS Code, opencode) typed access to scenes, properties, execution, runtime observation and safety policy.**
+**Osiris is a local MCP (Model Context Protocol) server that inspects, modifies and controls Godot projects. A Rust core talks to a GDScript bridge running inside the Godot editor over TCP loopback, giving MCP clients (Claude Desktop, Cursor, VS Code, and any stdio MCP client) typed access to scenes, properties, execution, runtime observation and safety policy.**
 
 ## Key Features
 
@@ -79,7 +79,7 @@ The easiest way with a Godot project open is the wrapper:
 
 ```bash
 cd your-godot-project
-/path/to/osiris/scripts/osiris-mcp-opencode.sh   # detects the project, uses admin profile
+/path/to/osiris/scripts/osiris-mcp.sh   # detects the project, uses admin profile
 ```
 
 Or manually:
@@ -159,15 +159,13 @@ osiris-server [options]
 
 The token lives at `your-project/.godot/osiris_ipc_token` (stable) and at `~/.local/share/godot/app_userdata/<Project>/osiris_ipc_token`. Use an absolute path if the binary is not on `PATH`; use `--log-level debug` for diagnostics (logs go to stderr).
 
-**opencode** — `~/.config/opencode/opencode.json`:
+**Generic stdio client** (any MCP client that launches a local command) — use the wrapper to auto-detect the Godot project and the admin profile:
 
 ```json
 {
-  "mcp": {
+  "mcpServers": {
     "osiris": {
-      "type": "local",
-      "command": ["/path/to/osiris/scripts/osiris-mcp-opencode.sh"],
-      "enabled": true
+      "command": "/path/to/osiris/scripts/osiris-mcp.sh"
     }
   }
 }
@@ -264,7 +262,7 @@ Español | [English](#english)
 
 </div>
 
-**Osiris es un servidor MCP (Model Context Protocol) local que inspecciona, modifica y controla proyectos Godot. Un núcleo Rust se comunica con un puente GDScript dentro del editor Godot vía TCP loopback, dando a los clientes MCP (Claude Desktop, Cursor, VS Code, opencode) acceso tipado a escenas, propiedades, ejecución, observación de runtime y política de seguridad.**
+**Osiris es un servidor MCP (Model Context Protocol) local que inspecciona, modifica y controla proyectos Godot. Un núcleo Rust se comunica con un puente GDScript dentro del editor Godot vía TCP loopback, dando a los clientes MCP (Claude Desktop, Cursor, VS Code y cualquier cliente MCP stdio) acceso tipado a escenas, propiedades, ejecución, observación de runtime y política de seguridad.**
 
 ## Características
 
@@ -327,7 +325,7 @@ La forma más fácil con un proyecto Godot abierto es el wrapper:
 
 ```bash
 cd tu-proyecto-godot
-/ruta/a/osiris/scripts/osiris-mcp-opencode.sh   # detecta el proyecto, usa perfil admin
+/ruta/a/osiris/scripts/osiris-mcp.sh   # detecta el proyecto, usa perfil admin
 ```
 
 O manualmente:
@@ -407,15 +405,13 @@ osiris-server [opciones]
 
 El token está en `tu-proyecto/.godot/osiris_ipc_token` (estable) y en `~/.local/share/godot/app_userdata/<Proyecto>/osiris_ipc_token`. Usa ruta absoluta si el binario no está en `PATH`; usa `--log-level debug` para diagnóstico (los logs van a stderr).
 
-**opencode** — `~/.config/opencode/opencode.json`:
+**Cliente stdio genérico** (cualquier cliente MCP que lance un comando local) — usa el wrapper para auto-detectar el proyecto Godot y el perfil admin:
 
 ```json
 {
-  "mcp": {
+  "mcpServers": {
     "osiris": {
-      "type": "local",
-      "command": ["/ruta/a/osiris/scripts/osiris-mcp-opencode.sh"],
-      "enabled": true
+      "command": "/ruta/a/osiris/scripts/osiris-mcp.sh"
     }
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrapper de opencode para el MCP server de Osiris.
+# Wrapper de integración con clientes MCP para el servidor Osiris.
 #
 # Detecta el proyecto Godot desde el cwd (busca project.godot hacia arriba),
 # lee el token del bridge en .godot/osiris_ipc_token y lanza osiris-server con
