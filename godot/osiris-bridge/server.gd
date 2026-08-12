@@ -6,7 +6,7 @@ const PROTOCOL_VERSION := 1
 const MAX_LINE_BYTES := 1048576
 const TOKEN_FILE := "user://osiris_ipc_token"
 const MAX_POLL_TIME_MSEC := 5
-const MAX_MESSAGES_PER_POLL := 10
+const MAX_MESSAGES_PER_POLL := 50
 
 # Nombres de los 40 monitores estándar de Godot (main/performance.cpp:165).
 const STANDARD_MONITORS := [
@@ -48,12 +48,27 @@ const RUN_HISTORY_FILE := "user://osiris_run_history.jsonl"
 const RUN_HISTORY_MAX := 200
 var _run_start_ms: int = 0
 var _run_started_scene: String = ""
+# Registro de operaciones (ADR-008, espejo del core Rust): op -> handler.
+# Evita el `match` gigante; añadir una op es una línea en _register_handlers.
+var _handlers: Dictionary = {}
+# Booster de rendimiento: mientras haya clientes conectados, el editor no debe
+# throttlear el main loop (vsync/low_processor) o cada llamada esperaría un
+# frame (6.9ms a 144Hz, ~100ms con ventana oculta en Wayland).
+var _boosted: bool = false
+var _saved_max_fps: int = 0
+var _saved_low_proc: bool = false
+var _saved_vsync: int = 0
 
 func set_controller(c: Object) -> void:
 	_controller = c
 
 func is_running() -> bool:
 	return _editor.is_playing_scene()
+
+## ¿Hay algún cliente MCP conectado? El refresh de runtime solo debe correr con
+## consumidor: sin clientes, pedir el árbol del juego cada 2s es trabajo muerto.
+func has_clients() -> bool:
+	return _peers.size() > 0
 
 ## Callback conectado por plugin.gd a la señal debug_data del ScriptEditorDebugger.
 ## Recibe TODOS los mensajes del juego ya decodificados (vault 18 §4).
@@ -133,16 +148,121 @@ func start(addr: String, port: int, editor: EditorInterface, undo_redo: EditorUn
 	_write_token()
 	_editor = editor
 	_undo_redo = undo_redo
+	_register_handlers()
 	print_rich("[OsirisBridge] escuchando en %s:%d" % [addr, port])
+
+## Registro de operaciones (Registry/Command, ADR-008). Una línea por op.
+func _register_handlers() -> void:
+	_handlers = {
+		"ping": _on_ping,
+		"get_version": _get_version,
+		"get_state": _get_state,
+		"get_active_scene": _get_active_scene,
+		"list_nodes": _list_nodes,
+		"get_property": _get_property,
+		"list_resources": _list_resources,
+		"get_editor_errors": _get_editor_errors,
+		"create_node": _create_node,
+		"create_tween": _create_tween,
+		"set_description": _set_description,
+		"set_unique_name": _set_unique_name,
+		"reparent_node": _reparent_node,
+		"duplicate_node": _duplicate_node,
+		"instance_scene": _instance_scene,
+		"inputmap_add": _inputmap_add,
+		"scene_apply": _scene_apply,
+		"remove_node": _remove_node,
+		"set_property": _set_property,
+		"object_property_get": _object_property_get,
+		"object_property_set": _object_property_set,
+		"call_method": _call_method,
+		"save_scene": _save_scene,
+		"save_scene_as": _save_scene_as,
+		"save_all_scenes": _save_all_scenes,
+		"unsaved_scenes": _unsaved_scenes,
+		"inspect_node": _inspect_node,
+		"open_scene": _open_scene,
+		"open_scenes": _open_scenes,
+		"move_node": _move_node,
+		"create_scene": _create_scene,
+		"export_project": _export_project,
+		"run_project": _run_project,
+		"input_send": _input_send,
+		"stop_project": _stop_project,
+		"reload_editor": _reload_editor,
+		"get_run_status": _get_run_status,
+		"get_run_output": _get_run_output,
+		"run_history": _run_history,
+		"assert_property": _assert_property,
+		"validate_script": _validate_script,
+		"write_script": _write_script,
+		"describe_class": _describe_class,
+		"list_signals": _list_signals,
+		"connect_signal": _connect_signal,
+		"disconnect_signal": _disconnect_signal,
+		"emit_signal": _emit_signal,
+		"add_to_group": _add_to_group,
+		"remove_from_group": _remove_from_group,
+		"get_groups": _get_groups,
+		"nodes_in_group": _nodes_in_group,
+		"input_query": _input_query,
+		"asset_list": _asset_list,
+		"project_files": _project_files,
+		"project_settings_get": _project_settings_get,
+		"project_settings_set": _project_settings_set,
+		"editor_settings_get": _editor_settings_get,
+		"editor_settings_set": _editor_settings_set,
+		"asset_reimport": _asset_reimport,
+		"resource_assign": _resource_assign,
+		"resource_create": _resource_create,
+		"runtime_tree": _runtime_tree,
+		"runtime_metrics": _runtime_metrics,
+		"debug_inspect": _handle_debug_inspect,
+		"runtime_capture": _runtime_capture,
+		"select_nodes": _select_nodes,
+		"editor_screenshot": _editor_screenshot,
+		"add_autoload": _add_autoload,
+	}
+
+func _on_ping(id: Variant, params: Dictionary = {}) -> Dictionary:
+	return _ok(id, {"pong": true})
+
 
 func stop() -> void:
 	for p: StreamPeerTCP in _peers:
 		p.disconnect_from_host()
 	_peers.clear()
 	_peer_buffers.clear()
+	if _boosted:
+		_boosted = false
+		if DisplayServer.get_name() != "headless":
+			Engine.max_fps = _saved_max_fps
+			OS.low_processor_usage_mode = _saved_low_proc
+			DisplayServer.window_set_vsync_mode(_saved_vsync)
 	if _tcp:
 		_tcp.stop()
 		_tcp = null
+
+func _update_boost() -> void:
+	# Sobre el main loop del editor (solo si hay una ventana real).
+	# 0 fps = sin techo; sin vsync el loop corre tan rápido como pueda.
+	var active: bool = _peers.size() > 0
+	if active == _boosted:
+		return
+	if active:
+		_saved_max_fps = Engine.get_max_fps()
+		_saved_low_proc = OS.low_processor_usage_mode
+		_saved_vsync = DisplayServer.window_get_vsync_mode()
+		if DisplayServer.get_name() != "headless":
+			Engine.max_fps = 0
+			OS.low_processor_usage_mode = false
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	else:
+		if DisplayServer.get_name() != "headless":
+			Engine.max_fps = _saved_max_fps
+			OS.low_processor_usage_mode = _saved_low_proc
+			DisplayServer.window_set_vsync_mode(_saved_vsync)
+	_boosted = active
 
 func poll() -> void:
 	if _busy:
@@ -171,6 +291,7 @@ func poll() -> void:
 	for p in to_remove:
 		_peers.erase(p)
 		_peer_buffers.erase(p)
+	_update_boost()
 	_busy = false
 
 
@@ -179,36 +300,50 @@ func _accept() -> void:
 		var p: StreamPeerTCP = _tcp.take_connection()
 		if p:
 			_peers.append(p)
+	_update_boost()
 
 func _process_peer(peer: StreamPeerTCP) -> int:
+	# Drena el buffer completo: procesa todos los mensajes \n disponibles en el
+	# mismo poll, no uno por frame. Evita +1 frame de latencia por mensaje en
+	# ráfagas (varios tools/call encolados).
 	var buf: String = _peer_buffers.get(peer, "")
 	var avail: int = peer.get_available_bytes()
 	if avail > 0:
 		buf += peer.get_utf8_string(avail)
+	var processed: int = 0
+	var start_time: int = Time.get_ticks_msec()
+	while true:
+		if buf.length() > MAX_LINE_BYTES:
+			_peer_buffers.erase(peer)
+			break
+		var newline: int = buf.find("\n")
+		if newline < 0:
+			_peer_buffers[peer] = buf
+			break
+		var line: String = buf.substr(0, newline).strip_edges()
+		buf = buf.substr(newline + 1)
+		var msg: Variant = _parse_line(line)
+		if typeof(msg) == TYPE_DICTIONARY:
+			var response: Variant = _dispatch(msg)
+			if response:
+				_send(peer, response)
+				processed += 1
+		# Cap de tiempo: no acaparar el frame del editor con una ráfaga enorme.
+		if Time.get_ticks_msec() - start_time >= MAX_POLL_TIME_MSEC:
+			_peer_buffers[peer] = buf
+			break
+	return processed
 
-	var newline: int = buf.find("\n")
-	if newline < 0:
-		_peer_buffers[peer] = buf
-		return 0
-
-	var line: String = buf.substr(0, newline).strip_edges()
-	buf = buf.substr(newline + 1)
-	_peer_buffers[peer] = buf
-	if line.length() > MAX_LINE_BYTES:
-		return 0
-
-	var test_json_conv: JSON = JSON.new()
-	if test_json_conv.parse(line) != OK:
-		return 0
-	var msg: Dictionary = test_json_conv.get_data()
+func _parse_line(line: String) -> Variant:
+	if line == "":
+		return null
+	var json := JSON.new()
+	if json.parse(line) != OK:
+		return null
+	var msg: Variant = json.get_data()
 	if typeof(msg) != TYPE_DICTIONARY:
-		return 0
-
-	var response: Variant = _dispatch(msg)
-	if response:
-		_send(peer, response)
-		return 1
-	return 0
+		return null
+	return msg
 
 func _send(peer: StreamPeerTCP, data: Dictionary) -> void:
 	var txt: String = JSON.stringify(data, "", false)
@@ -244,84 +379,10 @@ func _hello_err(code: String, message: String) -> Dictionary:
 func _request(msg: Dictionary) -> Dictionary:
 	var id: Variant = msg.get("id")
 	var op: String = msg.get("op", "")
-	match op:
-		"ping":
-			return _ok(id, {"pong": true})
-		"get_version":
-			return _get_version(id)
-		"get_active_scene":
-			return _get_active_scene(id)
-		"list_nodes":
-			return _list_nodes(id, msg.get("params", {}))
-		"get_property":
-			return _get_property(id, msg.get("params", {}))
-		"list_resources":
-			return _list_resources(id, msg.get("params", {}))
-		"get_editor_errors":
-			return _get_editor_errors(id)
-		"create_node":
-			return _create_node(id, msg.get("params", {}))
-		"scene_apply":
-			return _scene_apply(id, msg.get("params", {}))
-		"remove_node":
-			return _remove_node(id, msg.get("params", {}))
-		"set_property":
-			return _set_property(id, msg.get("params", {}))
-		"object_property_get":
-			return _object_property_get(id, msg.get("params", {}))
-		"object_property_set":
-			return _object_property_set(id, msg.get("params", {}))
-		"call_method":
-			return _call_method(id, msg.get("params", {}))
-		"save_scene":
-			return _save_scene(id)
-		"run_project":
-			return _run_project(id, msg.get("params", {}))
-
-		"stop_project":
-			return _stop_project(id)
-		"get_run_status":
-			return _get_run_status(id)
-		"get_run_output":
-			return _get_run_output(id)
-		"run_history":
-			return _run_history(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
-		"assert_property":
-			return _assert_property(id, msg.get("params", {}))
-		"validate_script":
-			return _validate_script(id, msg.get("params", {}))
-		"write_script":
-			return _write_script(id, msg.get("params", {}))
-		"describe_class":
-			return _describe_class(id, msg.get("params", {}))
-		"list_signals":
-			return _list_signals(id, msg.get("params", {}))
-		"connect_signal":
-			return _connect_signal(id, msg.get("params", {}))
-		"disconnect_signal":
-			return _disconnect_signal(id, msg.get("params", {}))
-		"asset_list":
-			return _asset_list(id, msg.get("params", {}))
-		"project_files":
-			return _project_files(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
-		"project_settings_get":
-			return _project_settings_get(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
-		"project_settings_set":
-			return _project_settings_set(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
-		"asset_reimport":
-			return _asset_reimport(id, msg.get("params", {}))
-		"resource_assign":
-			return _resource_assign(id, msg.get("params", {}))
-		"runtime_tree":
-			return _runtime_tree(id)
-		"runtime_metrics":
-			return _runtime_metrics(id)
-		"debug_inspect":
-			return _handle_debug_inspect(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
-		"runtime_capture":
-			return _runtime_capture(id)
-		_:
-			return _error(id, "validation", "operación desconocida: %s" % op, false)
+	var handler: Callable = _handlers.get(op, Callable())
+	if not handler.is_valid():
+		return _error(id, "validation", "operación desconocida: %s" % op, false)
+	return handler.call(id, msg.get("params", {}) if typeof(msg.get("params")) == TYPE_DICTIONARY else {})
 
 func _list_signals(id: Variant, params: Dictionary) -> Dictionary:
 	var node: Node = _resolve_node(params)
@@ -378,6 +439,91 @@ func _disconnect_signal(id: Variant, params: Dictionary) -> Dictionary:
 		return _ok(id, {"disconnected": false, "note": "no estaba conectada"})
 	source.disconnect(signal_name, Callable(target, method))
 	return _ok(id, {"disconnected": true, "signal": signal_name, "target_path": params.get("target_path", "."), "method": method})
+
+## Emite una señal en un nodo (Object.emit_signal, bound nativo).
+func _emit_signal(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var signal_name: String = params.get("signal", "")
+	if signal_name == "":
+		return _error(id, "validation", "parámetro 'signal' requerido")
+	var raw_args: Array = params.get("args", [])
+	if raw_args.size() > 0:
+		var args: Array = []
+		for a in raw_args:
+			args.append(_json_to_variant(a))
+		# emit_signal no acepta arrays; pasar hasta 4 argumentos posicionales.
+		match args.size():
+			1: node.emit_signal(signal_name, args[0])
+			2: node.emit_signal(signal_name, args[0], args[1])
+			3: node.emit_signal(signal_name, args[0], args[1], args[2])
+			_: node.emit_signal(signal_name, args[0], args[1], args[2], args[3])
+	else:
+		node.emit_signal(signal_name)
+	return _ok(id, {"emitted": signal_name, "path": params.get("path", ".")})
+
+## Añade un nodo a un grupo (Node.add_to_group, bound).
+func _add_to_group(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var group: String = params.get("group", "")
+	if group == "":
+		return _error(id, "validation", "parámetro 'group' requerido")
+	node.add_to_group(group)
+	return _ok(id, {"group": group, "path": params.get("path", ".")})
+
+## Quita un nodo de un grupo (Node.remove_from_group, bound).
+func _remove_from_group(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var group: String = params.get("group", "")
+	if group == "":
+		return _error(id, "validation", "parámetro 'group' requerido")
+	node.remove_from_group(group)
+	return _ok(id, {"group": group, "path": params.get("path", ".")})
+
+## Lista los grupos de un nodo (Node.get_groups, bound).
+func _get_groups(id: Variant, params: Dictionary = {}) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var groups: Array = []
+	for g in node.get_groups():
+		groups.append(String(g))
+	return _ok(id, {"path": params.get("path", "."), "groups": groups})
+
+## Query de nodos por grupo (SceneTree.get_nodes_in_group, bound).
+func _nodes_in_group(id: Variant, params: Dictionary) -> Dictionary:
+	var group: String = params.get("group", "")
+	if group == "":
+		return _error(id, "validation", "parámetro 'group' requerido")
+	var nodes: Array = []
+	for n in _editor.get_edited_scene_root().get_tree().get_nodes_in_group(group):
+		nodes.append({"name": n.name, "class": n.get_class()})
+	return _ok(id, {"group": group, "nodes": nodes, "count": nodes.size()})
+
+## Consulta el estado del input en el editor (útil para debug). Devuelve
+## is_action_pressed, get_vector, is_key_pressed para las teclas/acciones pedidas.
+func _input_query(id: Variant, params: Dictionary) -> Dictionary:
+	var actions: Array = params.get("actions", [])
+	var keys: Array = params.get("keys", [])
+	var result: Dictionary = {}
+	for a in actions:
+		result[str(a)] = Input.is_action_pressed(str(a))
+	var vec_name: String = params.get("vector", "")
+	if vec_name != "":
+		var dir := Input.get_vector(
+			"%s_left" % vec_name, "%s_right" % vec_name,
+			"%s_up" % vec_name, "%s_down" % vec_name
+		)
+		result["vector_%s" % vec_name] = {"x": dir.x, "y": dir.y}
+	for k in keys:
+		var keycode: Key = OS.find_keycode_from_string(str(k))
+		result[str(k)] = Input.is_key_pressed(keycode) if keycode != KEY_NONE else false
+	return _ok(id, {"input": result})
 
 func _resolve_target_node(params: Dictionary) -> Node:
 	var root: Node = _editor.get_edited_scene_root()
@@ -448,6 +594,25 @@ func _project_settings_set(id: Variant, params: Dictionary) -> Dictionary:
 		return _error(id, "godot", "no se pudo guardar project.godot (código %d)" % err)
 	return _ok(id, {"name": name, "saved": true, "value": _variant_to_json(ProjectSettings.get_setting_with_override(name))})
 
+## Lee una setting del editor (EditorSettings.get_setting, bound).
+func _editor_settings_get(id: Variant, params: Dictionary) -> Dictionary:
+	var name: String = params.get("name", "")
+	if name == "":
+		return _error(id, "validation", "parámetro 'name' requerido")
+	var settings: EditorSettings = _editor.get_editor_settings()
+	if not settings.has_setting(name):
+		return _error(id, "validation", "setting desconocida: %s" % name)
+	return _ok(id, {"name": name, "value": _variant_to_json(settings.get_setting(name))})
+
+## Escribe una setting del editor (EditorSettings.set_setting, bound).
+func _editor_settings_set(id: Variant, params: Dictionary) -> Dictionary:
+	var name: String = params.get("name", "")
+	if name == "":
+		return _error(id, "validation", "parámetro 'name' requerido")
+	var settings: EditorSettings = _editor.get_editor_settings()
+	settings.set_setting(name, _json_to_variant(params.get("value")))
+	return _ok(id, {"name": name, "value": _variant_to_json(settings.get_setting(name))})
+
 func _asset_list(id: Variant, params: Dictionary) -> Dictionary:
 	var fs: EditorFileSystem = _editor.get_resource_filesystem()
 	var dir: EditorFileSystemDirectory = fs.get_filesystem()
@@ -512,6 +677,40 @@ func _resource_assign(id: Variant, params: Dictionary) -> Dictionary:
 	_undo_redo.commit_action()
 	return _ok(id, {"property": prop, "resource": res_path, "assigned": true})
 
+## Crea un recurso nuevo (Animation, Theme, SpriteFrames, ShaderMaterial...) y lo
+## guarda a res://. ClassDB.instantiate (class_db.cpp:577) + ResourceSaver.save.
+func _resource_create(id: Variant, params: Dictionary) -> Dictionary:
+	var res_type: String = params.get("type", "")
+	if res_type == "":
+		return _error(id, "validation", "parámetro 'type' requerido (ej: Animation, Theme, SpriteFrames)")
+	if not ClassDB.class_exists(res_type):
+		return _error(id, "validation", "clase desconocida: %s" % res_type)
+	var path: String = params.get("path", "")
+	if path == "":
+		return _error(id, "validation", "parámetro 'path' requerido (res://*.tres)")
+	if not path.begins_with("res://"):
+		return _error(id, "validation", "ruta debe comenzar con res://")
+	if FileAccess.file_exists(path):
+		return _error(id, "conflict", "el recurso ya existe: %s" % path)
+	# Crear el directorio padre si no existe (ResourceSaver.save falla si no está).
+	var abs: String = ProjectSettings.globalize_path(path)
+	var base_dir: String = abs.get_base_dir()
+	if not DirAccess.dir_exists_absolute(base_dir):
+		DirAccess.make_dir_recursive_absolute(base_dir)
+	var res: Resource = ClassDB.instantiate(res_type)
+	if not res or not res is Resource:
+		return _error(id, "godot", "el tipo %s no es un Resource" % res_type)
+	# Propiedades iniciales (opcional): dict nombre -> valor.
+	var props: Variant = params.get("properties", {})
+	if typeof(props) == TYPE_DICTIONARY:
+		for key: Variant in props:
+			res.set(str(key), _json_to_variant(props[key]))
+	res.resource_path = path
+	var err: int = ResourceSaver.save(res, path, ResourceSaver.FLAG_REPLACE_SUBRESOURCE_PATHS)
+	if err != OK:
+		return _error(id, "godot", "ResourceSaver.save devolvió %d" % err)
+	return _ok(id, {"created": path, "type": res_type})
+
 func _describe_class(id: Variant, params: Dictionary) -> Dictionary:
 	var klass: String = params.get("class", "")
 	if klass == "":
@@ -535,7 +734,8 @@ func _describe_class(id: Variant, params: Dictionary) -> Dictionary:
 			break
 		var args: Array = []
 		for a: Dictionary in m.get("args", []):
-			args.append(a.get("name", ""))
+			var type_name: String = a.get("class_name", "") if a.get("class_name", "") != "" else type_string(a.get("type", TYPE_NIL))
+			args.append({"name": a.get("name", ""), "type": type_name})
 		methods.append({"name": m.get("name", ""), "args": args})
 
 	var signals: Array = []
@@ -640,7 +840,7 @@ func _parse_check_errors(out: Array) -> Array:
 	return errors
 
 
-func _get_version(id: Variant) -> Dictionary:
+func _get_version(id: Variant, params: Dictionary = {}) -> Dictionary:
 	var vi: Dictionary = Engine.get_version_info()
 	var info: Dictionary = {
 		"godot": "%d.%d.%d" % [vi.major, vi.minor, vi.patch],
@@ -648,7 +848,42 @@ func _get_version(id: Variant) -> Dictionary:
 	}
 	return _ok(id, info)
 
-func _get_active_scene(id: Variant) -> Dictionary:
+## Estado completo de la máquina (DFA): el LLM lee aquí dónde está antes de
+## elegir la transición. Consolida editor + juego + sesión debugger + input.
+func _get_state(id: Variant, params: Dictionary = {}) -> Dictionary:
+	var vi: Dictionary = Engine.get_version_info()
+	var root: Node = _editor.get_edited_scene_root()
+	var running: bool = _editor.is_playing_scene()
+	# Sesión del debugger "connected" si el árbol remoto llegó (runtime.tree lo
+	# llena); pending si el juego corre pero aún no; none si no corre.
+	var debugger_session: String = "none"
+	if running:
+		debugger_session = "connected" if _debug_tree.size() > 0 else "pending"
+	var input_node: String = "absent"
+	if ProjectSettings.has_setting("autoload/%s" % OSIRIS_INPUT_AUTOLOAD_NAME):
+		input_node = "autoload"
+	var scenes_open: Array = []
+	for s in _editor.get_open_scenes():
+		scenes_open.append(String(s))
+	return _ok(id, {
+		"editor": {
+			"connected": true,
+			"godot_version": "%d.%d.%d" % [vi.major, vi.minor, vi.patch],
+			"project": ProjectSettings.get_setting("application/config/name", ""),
+			"scene_active": root.scene_file_path if root else "",
+			"scenes_open": scenes_open,
+			"unsaved": _editor.get_unsaved_scenes().size() > 0,
+		},
+		"game": {
+			"running": running,
+			"scene": _run_started_scene if running else "",
+			"debugger_session": debugger_session,
+			"input_node": input_node,
+			"errors_count": _debug_errors.size(),
+		},
+	})
+
+func _get_active_scene(id: Variant, params: Dictionary = {}) -> Dictionary:
 	var root: Node = _editor.get_edited_scene_root()
 	if not root:
 		return _error(id, "godot", "no hay escena activa")
@@ -751,7 +986,9 @@ func _variant_to_json(v: Variant, depth: int = 4) -> Variant:
 		TYPE_COLOR: return "#%02x%02x%02x%02x" % [int(v.r*255), int(v.g*255), int(v.b*255), int(v.a*255)]
 		TYPE_ARRAY, TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY, TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY:
 			var arr: Array = []
-			for i in range(mini(v.size(), 100)):
+			# Sin truncado: el límite real es MAX_LINE_BYTES del protocolo. Truncar
+			# a 100 perdía datos silenciosamente (ej: arrays grandes de props).
+			for i in v.size():
 				arr.append(_variant_to_json(v[i], depth - 1))
 			return arr
 		TYPE_DICTIONARY:
@@ -771,7 +1008,7 @@ func _variant_to_json(v: Variant, depth: int = 4) -> Variant:
 		TYPE_PROJECTION: return {"x": _variant_to_json(v.x, 1), "y": _variant_to_json(v.y, 1), "z": _variant_to_json(v.z, 1), "w": _variant_to_json(v.w, 1)}
 		_: return str(v)
 
-func _get_editor_errors(id: Variant) -> Dictionary:
+func _get_editor_errors(id: Variant, params: Dictionary = {}) -> Dictionary:
 	# Errores reales del juego en ejecución, capturados vía señal debug_data
 	# (RF-09, vault 18 §4). Sin juego corriendo, vacío.
 	var errs: Array = []
@@ -795,23 +1032,28 @@ func _resolve_node(params: Dictionary) -> Node:
 	return root if node_path == "." else root.get_node_or_null(NodePath(node_path))
 
 func _call_method(id: Variant, params: Dictionary) -> Dictionary:
-	var node: Node = _resolve_node(params)
-	if not node:
-		return _error(id, "godot", "nodo no encontrado")
+	var target: Object = _resolve_object(params)
+	if not target:
+		return _error(id, "godot", "nodo o recurso no encontrado (usa path o object)")
 	var method: String = params.get("method", "")
 	if method == "":
 		return _error(id, "validation", "parámetro 'method' requerido")
 	var raw_args: Array = params.get("args", [])
 	var args: Array = []
 	for a in raw_args:
-		args.append(_json_to_variant(a))
+		var v: Variant = _json_to_variant(a)
+		# $res: cargar un recurso res:// desde el dict (útil para args como
+		# add_frame(anim, texture) donde texture es un Resource).
+		if typeof(v) == TYPE_DICTIONARY and v.has("$res"):
+			v = load(str(v.get("$res", "")))
+		args.append(v)
 	var result: Variant
 	if args.size() == 0:
-		result = node.call(method)
+		result = target.call(method)
 	else:
-		result = node.callv(method, args)
+		result = target.callv(method, args)
 	return _ok(id, {
-		"path": params.get("path", "."),
+		"target": _target_label(params),
 		"method": method,
 		"result": _variant_to_json(result),
 	})
@@ -972,6 +1214,86 @@ func _create_node(id: Variant, params: Dictionary) -> Dictionary:
 	_undo_redo.commit_action()
 	return _ok(id, {"path": "%s/%s" % [raw_path, new_node.name], "type": node_type, "name": new_node.name})
 
+## Crea un Tween en un nodo (Node.create_tween, bound). Para animaciones.
+func _create_tween(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var tween := node.create_tween()
+	return _ok(id, {"path": params.get("path", "."), "tween": str(tween), "note": "usa object.call sobre el Tween: tween_property, tween_method, etc."})
+
+## Asigna una descripción en el editor (set_editor_description, bound).
+func _set_description(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	node.set_editor_description(params.get("description", ""))
+	return _ok(id, {"path": params.get("path", "."), "description": node.get_editor_description()})
+
+## Marca un nodo con acceso % (set_unique_name_in_owner, bound).
+func _set_unique_name(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	var enable: bool = params.get("enable", true)
+	node.set_unique_name_in_owner(enable)
+	return _ok(id, {"path": params.get("path", "."), "unique_name": enable})
+
+## Redpadrea un nodo (Node.reparent, bound). A diferencia de move_node, usa
+## la API nativa que preserva la transformación global.
+func _reparent_node(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	if node == _editor.get_edited_scene_root():
+		return _error(id, "godot", "no se puede reparentear la raíz")
+	var new_parent_raw: String = params.get("new_parent", "")
+	if new_parent_raw == "":
+		return _error(id, "validation", "parámetro 'new_parent' requerido")
+	var new_parent: Node = _resolve_path_node(new_parent_raw)
+	if not new_parent:
+		return _error(id, "godot", "nuevo padre no encontrado")
+	var keep_transform: bool = params.get("keep_transform", true)
+	node.reparent(new_parent, keep_transform)
+	return _ok(id, {"path": params.get("path", "."), "new_parent": new_parent_raw, "keep_transform": keep_transform})
+
+## Duplica un nodo (Node.duplicate profundo) como hermano, con Undo/Redo.
+func _duplicate_node(id: Variant, params: Dictionary) -> Dictionary:
+	var node: Node = _resolve_node(params)
+	if not node:
+		return _error(id, "godot", "nodo no encontrado")
+	if node == _editor.get_edited_scene_root():
+		return _error(id, "godot", "no se puede duplicar la raíz de la escena")
+	var parent: Node = node.get_parent()
+	var dup: Node = node.duplicate()
+	var node_name: String = params.get("name", "")
+	dup.name = node_name if node_name != "" else node.name
+	var root: Node = _editor.get_edited_scene_root()
+	_undo_redo.create_action("Osiris: duplicar nodo")
+	_undo_redo.add_do_method(parent, "add_child", dup, true)
+	_undo_redo.add_do_method(dup, "set_owner", root)
+	_undo_redo.add_do_reference(dup)
+	_undo_redo.add_undo_method(parent, "remove_child", dup)
+	_undo_redo.commit_action()
+	return _ok(id, {"path": "%s/%s" % [params.get("path", "."), dup.name], "name": dup.name})
+
+## Registra una acción de InputMap (InputMap.add_action, input_map.cpp:44) y la
+## persiste en project.godot bajo `input/<accion>` (project_settings.cpp:1676).
+func _inputmap_add(id: Variant, params: Dictionary) -> Dictionary:
+	var action: String = params.get("action", "")
+	if action == "":
+		return _error(id, "validation", "parámetro 'action' requerido")
+	if InputMap.has_action(action):
+		return _error(id, "conflict", "la acción ya existe: %s" % action)
+	InputMap.add_action(action)
+	# Formato 4.7: dict con deadzone + events (project_settings.cpp:626). El array
+	# vacío es formato legacy y dispara warning al cargar project.godot.
+	ProjectSettings.set_setting("input/%s" % action, {"deadzone": 0.5, "events": []})
+	var err: int = ProjectSettings.save()
+	if err != OK:
+		return _error(id, "godot", "no se pudo guardar project.godot (código %d)" % err)
+	return _ok(id, {"action": action, "saved": true})
+
 func _remove_node(id: Variant, params: Dictionary) -> Dictionary:
 	var node: Node = _resolve_node(params)
 	if not node:
@@ -1033,7 +1355,7 @@ func _json_to_variant(v: Variant) -> Variant:
 		return arr
 	return v
 
-func _save_scene(id: Variant) -> Dictionary:
+func _save_scene(id: Variant, params: Dictionary = {}) -> Dictionary:
 	var root: Node = _editor.get_edited_scene_root()
 	if not root:
 		return _error(id, "godot", "no hay escena activa")
@@ -1048,6 +1370,212 @@ func _save_scene(id: Variant) -> Dictionary:
 	if ok != OK:
 		return _error(id, "godot", "ResourceSaver.save devolvio %d" % ok)
 	return _ok(id, {"saved": path})
+
+## Guarda la escena activa con un nuevo path (save_scene_as, bound).
+func _save_scene_as(id: Variant, params: Dictionary) -> Dictionary:
+	var root: Node = _editor.get_edited_scene_root()
+	if not root:
+		return _error(id, "godot", "no hay escena activa")
+	var path: String = params.get("path", "")
+	if path == "" or not path.begins_with("res://"):
+		return _error(id, "validation", "parámetro 'path' requerido (res://*.tscn)")
+	_editor.save_scene_as(path)
+	return _ok(id, {"saved": path})
+
+## Guarda todas las escenas abiertas (save_all_scenes, bound).
+func _save_all_scenes(id: Variant, params: Dictionary = {}) -> Dictionary:
+	_editor.save_all_scenes()
+	return _ok(id, {"saved": true})
+
+## Lista las escenas con cambios sin guardar (get_unsaved_scenes, bound).
+func _unsaved_scenes(id: Variant, params: Dictionary = {}) -> Dictionary:
+	var scenes: Array = []
+	for s in _editor.get_unsaved_scenes():
+		scenes.append(String(s))
+	return _ok(id, {"unsaved": scenes})
+
+## Foco del inspector en un nodo (inspect_object, bound). Si no se pasa path,
+## limpia el inspector. Con path, selecciona y abre sus propiedades.
+func _inspect_node(id: Variant, params: Dictionary = {}) -> Dictionary:
+	var path: String = params.get("path", "")
+	if path != "":
+		var node: Node = _resolve_node(params)
+		if not node:
+			return _error(id, "godot", "nodo no encontrado")
+		_editor.inspect_object(node)
+		return _ok(id, {"inspected": path})
+	_editor.inspect_object(null)
+	return _ok(id, {"inspected": null, "note": "inspector limpiado"})
+	return _ok(id, {"saved": path})
+
+## Lista las escenas abiertas en el editor (EditorInterface.get_open_scenes).
+func _open_scenes(id: Variant, params: Dictionary = {}) -> Dictionary:
+	var scenes: Array = []
+	for s in _editor.get_open_scenes():
+		scenes.append(String(s))
+	return _ok(id, {"scenes": scenes})
+
+## Abre una escena (res://*.tscn) en el editor. La carga la hace el propio
+## editor (`EditorNode::open_scene`, editor_node.cpp:5042) — no pide confirmar
+## si hay cambios sin guardar en la escena actual: el llamador es responsable
+## de guardar antes (godot.scene.save).
+func _open_scene(id: Variant, params: Dictionary) -> Dictionary:
+	var path: String = params.get("path", "")
+	if path == "":
+		return _error(id, "validation", "parámetro 'path' requerido")
+	if not path.begins_with("res://") or path.get_extension() != "tscn":
+		return _error(id, "validation", "ruta debe ser res://*.tscn")
+	if not FileAccess.file_exists(path):
+		return _error(id, "godot", "la escena no existe: %s" % path)
+	var root: Node = _editor.get_edited_scene_root()
+	if root and root.scene_file_path != path and _has_unsaved_scenes():
+		return _error(id, "conflict", "hay escenas sin guardar; guarda primero (godot.scene.save)")
+	_editor.open_scene_from_path(path)
+	return _ok(id, {"opened": path})
+
+func _has_unsaved_scenes() -> bool:
+	return _editor.get_unsaved_scenes().size() > 0
+
+## Crea una escena nueva (res://*.tscn): construye el nodo raíz, lo empaqueta
+## como PackedScene, lo guarda a disco y lo abre en el editor. No depende de
+## `EditorNode::new_scene()` (no expuesto a GDScript): la escena se crea y se
+## abre como cualquier otra.
+func _create_scene(id: Variant, params: Dictionary) -> Dictionary:
+	var path: String = params.get("path", "")
+	if path == "":
+		return _error(id, "validation", "parámetro 'path' requerido (res://*.tscn)")
+	if not path.begins_with("res://") or path.get_extension() != "tscn":
+		return _error(id, "validation", "ruta debe ser res://*.tscn")
+	if FileAccess.file_exists(path):
+		return _error(id, "conflict", "la escena ya existe: %s (usa godot.scene.open)" % path)
+	if _has_unsaved_scenes():
+		return _error(id, "conflict", "hay escenas sin guardar; guarda primero (godot.scene.save)")
+	var node_type: String = params.get("type", "Node2D")
+	var root: Variant = ClassDB.instantiate(node_type)
+	if not root:
+		return _error(id, "godot", "tipo de nodo desconocido: %s" % node_type)
+	root.name = params.get("name", node_type)
+	var packed := PackedScene.new()
+	var err: int = packed.pack(root)
+	if err != OK:
+		return _error(id, "godot", "PackedScene.pack devolvió %d" % err)
+	err = ResourceSaver.save(packed, path, ResourceSaver.FLAG_REPLACE_SUBRESOURCE_PATHS)
+	if err != OK:
+		return _error(id, "godot", "ResourceSaver.save devolvió %d" % err)
+	_editor.open_scene_from_path(path)
+	return _ok(id, {"created": path, "root": root.name, "type": node_type})
+
+## Selecciona nodos en el árbol del editor (EditorSelection.add_node).
+func _select_nodes(id: Variant, params: Dictionary) -> Dictionary:
+	var root: Node = _editor.get_edited_scene_root()
+	if not root:
+		return _error(id, "godot", "no hay escena activa")
+	var paths: Array = params.get("paths", [])
+	if typeof(paths) == TYPE_ARRAY and paths.size() > 0:
+		var sel: EditorSelection = _editor.get_selection()
+		sel.clear()
+		for raw in paths:
+			var node_path: String = _validate_path(str(raw))
+			if node_path == "":
+				return _error(id, "validation", "ruta inválida: %s" % str(raw))
+			var node: Node = root if node_path == "." else root.get_node_or_null(NodePath(node_path))
+			if node:
+				sel.add_node(node)
+	# Siempre devuelve la selección actual (útil para leer sin modificar).
+	var current: Array = []
+	for n in _editor.get_selection().get_selected_nodes():
+		current.append({"name": n.name, "class": n.get_class()})
+	return _ok(id, {"selected": paths, "selection": current})
+
+## (Interna) lee la selección actual del editor.
+func _get_selection(id: Variant, params: Dictionary = {}) -> Dictionary:
+	var sel: EditorSelection = _editor.get_selection()
+	var nodes: Array = []
+	for n in sel.get_selected_nodes():
+		nodes.append({"name": n.name, "class": n.get_class()})
+	return _ok(id, {"selection": nodes})
+
+## Screenshot del viewport del editor (2D/3D), no del juego. Usa
+## `SubViewport.get_texture().get_image().save_png()` (editor_interface.cpp:347).
+func _editor_screenshot(id: Variant, params: Dictionary = {}) -> Dictionary:
+	var viewport: SubViewport = null
+	var view3d: bool = bool(params.get("view3d", false))
+	if view3d:
+		viewport = _editor.get_editor_viewport_3d(0)
+	else:
+		viewport = _editor.get_editor_viewport_2d()
+	if not viewport:
+		return _error(id, "godot", "no se pudo obtener el viewport del editor")
+	var img: Image = viewport.get_texture().get_image()
+	if not img or img.get_width() <= 0:
+		return _error(id, "godot", "el viewport del editor aún no renderiza")
+	var out_path: String = params.get("output", "user://osiris_editor_shot.png")
+	if not out_path.begins_with("user://") and not out_path.begins_with("res://"):
+		return _error(id, "validation", "output debe ser user:// o res://")
+	var err: int = img.save_png(out_path)
+	if err != OK:
+		return _error(id, "godot", "no se pudo guardar el PNG (código %d)" % err)
+	return _ok(id, {"path": out_path, "view": "3d" if view3d else "2d", "size": "%dx%d" % [img.get_width(), img.get_height()]})
+
+## Registra un autoload singleton. Se guarda en project.godot como
+## `autoload/Name="*res://script.gd"` (core/config/project_settings.cpp:359);
+## el editor lo instancia al siguiente arranque. Requiere perfiles write.
+func _add_autoload(id: Variant, params: Dictionary) -> Dictionary:
+	var name: String = params.get("name", "")
+	if name == "":
+		return _error(id, "validation", "parámetro 'name' requerido")
+	var path: String = params.get("path", "")
+	if path == "":
+		return _error(id, "validation", "parámetro 'path' requerido (res://*.gd)")
+	if not path.begins_with("res://") or path.get_extension() != "gd":
+		return _error(id, "validation", "path debe ser res://*.gd")
+	if not FileAccess.file_exists(path):
+		return _error(id, "godot", "el script no existe: %s" % path)
+	ProjectSettings.set_setting("autoload/%s" % name, "*%s" % path)
+	var err: int = ProjectSettings.save()
+	if err != OK:
+		return _error(id, "godot", "no se pudo guardar project.godot (código %d)" % err)
+	return _ok(id, {"autoload": name, "path": path, "saved": true})
+
+## Exporta el proyecto (release/debug) con un preset de export_presets.cfg.
+## Godot solo exporta vía CLI (`--export-release`), patrón main.cpp:4064; en el
+## editor el singleton EditorExport no expone métodos a GDScript, así que
+## lanzamos un subproceso headless igual que _validate_script (OS.execute).
+func _export_project(id: Variant, params: Dictionary) -> Dictionary:
+	var preset: String = params.get("preset", "")
+	if preset == "":
+		return _error(id, "validation", "parámetro 'preset' requerido (nombre en export_presets.cfg)")
+	var output: String = params.get("output", "")
+	if output == "":
+		return _error(id, "validation", "parámetro 'output' requerido (ruta de salida)")
+	var debug: bool = bool(params.get("debug", false))
+	# Godot resuelve la salida relativa al proyecto.
+	var args: Array = [
+		"--headless",
+		"--path", ProjectSettings.globalize_path("res://"),
+		"--export-release" if not debug else "--export-debug",
+		preset,
+		output,
+	]
+	var out: Array = []
+	var exit_code: int = OS.execute(OS.get_executable_path(), args, out, true)
+	if exit_code != 0:
+		var stderr: String = ""
+		for o in out:
+			if typeof(o) == TYPE_STRING:
+				stderr += str(o)
+		return _error(id, "godot", "export falló (código %d): %s" % [exit_code, _sanitize(stderr)])
+	return _ok(id, {"exported": output, "preset": preset, "debug": debug})
+
+## El stderr de un subproceso Godot trae códigos ANSI (colores) y caracteres de
+## control; el contrato NDJSON es UTF-8 estricto y serde_json rechaza \u001B.
+func _sanitize(s: String) -> String:
+	var clean: String = s
+	var ansi := RegEx.create_from_string("\u001b\\[[0-9;]*m")
+	clean = ansi.sub(clean, "", true)
+	var ctl := RegEx.create_from_string("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]")
+	clean = ctl.sub(clean, "", true)
+	return clean.strip_edges()
 
 func _validate_path(raw: String) -> String:
 	if raw == "" or raw == ".":
@@ -1090,14 +1618,57 @@ func _run_project(id: Variant, params: Dictionary) -> Dictionary:
 	_run_started_scene = scene if scene != "" else "main"
 	return _ok(id, {"running": true, "scene": scene if scene != "" else "main", "pid": 0})
 
+const OSIRIS_INPUT_FILE := "user://osiris_input.json"
+const OSIRIS_INPUT_AUTOLOAD := "res://addons/osiris-bridge/osiris_input_autoload.gd"
+const OSIRIS_INPUT_AUTOLOAD_NAME := "OsirisInput"
+var _input_seq: int = 0
 
-func _stop_project(id: Variant) -> Dictionary:
+## Inyecta input en el juego en ejecución escribiendo a user://osiris_input.json.
+## Un autoload del juego (osiris_input_autoload.gd) lee el archivo en
+## _physics_process y llama Input.parse_input_event o Input.action_press.
+## Sin debugger, sin Live Edit: simple y robusto.
+func _input_send(id: Variant, params: Dictionary) -> Dictionary:
+	if not _editor.is_playing_scene():
+		return _error(id, "godot", "no hay juego en ejecución (godot.run)")
+	var input: Variant = params.get("input")
+	if typeof(input) != TYPE_DICTIONARY:
+		return _error(id, "validation", "parámetro 'input' requerido (dict: key/action + pressed)")
+	if not input.has("key") and not input.has("action"):
+		return _error(id, "validation", "input debe tener 'key' (ej: W) o 'action' (ej: jump)")
+	# Un entry por archivo con seq monótono: el autoload solo procesa seq > _last_seq,
+	# evitando carreras entre el bridge (editor) y el autoload (juego).
+	_input_seq += 1
+	var entry: Dictionary = {"seq": _input_seq, "pressed": bool(input.get("pressed", false))}
+	if input.has("key"):
+		entry["key"] = str(input.get("key", ""))
+	else:
+		entry["action"] = str(input.get("action", ""))
+	var w := FileAccess.open(OSIRIS_INPUT_FILE, FileAccess.WRITE)
+	if not w:
+		return _error(id, "godot", "no se pudo escribir %s" % OSIRIS_INPUT_FILE)
+	w.store_string(JSON.stringify(entry))
+	w.close()
+	return _ok(id, {"sent": true, "input": input, "method": "file"})
+
+func _stop_project(id: Variant, params: Dictionary = {}) -> Dictionary:
 	_run_deadline_ms = 0
 	_editor.stop_playing_scene()
 	_record_run_stop("stopped")
 	return _ok(id, {"running": false})
 
-func _get_run_status(id: Variant) -> Dictionary:
+## Recarga silenciosamente las escenas modificadas (evita el diálogo "files
+## changed, reload?"). EditorInterface.reload_scene_from_path (bound).
+func _reload_editor(id: Variant, params: Dictionary = {}) -> Dictionary:
+	# Guardar antes de recargar: evita perder cambios y crash por estado sucio.
+	_editor.save_scene()
+	var reloaded: Array = []
+	for scene_path in _editor.get_open_scenes():
+		_editor.reload_scene_from_path(String(scene_path))
+		reloaded.append(String(scene_path))
+	_editor.get_resource_filesystem().scan()
+	return _ok(id, {"reloaded": reloaded, "saved": true})
+
+func _get_run_status(id: Variant, params: Dictionary = {}) -> Dictionary:
 	var running: bool = _editor.is_playing_scene()
 	if not running:
 		_run_deadline_ms = 0
@@ -1174,12 +1745,12 @@ func _run_history(id: Variant, params: Dictionary) -> Dictionary:
 					entries.append(entry)
 	return _ok(id, {"entries": entries, "total": entries.size()})
 
-func _get_run_output(id: Variant) -> Dictionary:
+func _get_run_output(id: Variant, params: Dictionary = {}) -> Dictionary:
 	var lines: Array = _debug_output
 	var tail: Array = lines.slice(maxi(lines.size() - 200, 0))
 	return _ok(id, {"output": "\n".join(tail), "running": _editor.is_playing_scene()})
 
-func _runtime_tree(id: Variant) -> Dictionary:
+func _runtime_tree(id: Variant, params: Dictionary = {}) -> Dictionary:
 	# Árbol remoto del juego (flat DFS) capturado vía debug_data. Sin árbol,
 	# devolver el de la escena activa del editor como fallback.
 	if _debug_tree.size() > 0:
@@ -1244,7 +1815,7 @@ func _inspect_obj_to_json(obj: Array) -> Dictionary:
 		"properties": props,
 	}
 
-func _runtime_capture(id: Variant) -> Dictionary:
+func _runtime_capture(id: Variant, params: Dictionary = {}) -> Dictionary:
 	# Screenshot del juego (MVP4): pide al juego capturar y devuelve la ruta del
 	# PNG que ya guardó en temp (vía game_view:get_screenshot).
 	if not _editor.is_playing_scene():
@@ -1255,7 +1826,7 @@ func _runtime_capture(id: Variant) -> Dictionary:
 	# devolver la última ruta capturada (o vacía la primera vez).
 	return _ok(id, {"path": _debug_screenshot_path, "running": true, "note": "consulta de nuevo si la ruta está vacía (el juego tarda un frame)"})
 
-func _runtime_metrics(id: Variant) -> Dictionary:
+func _runtime_metrics(id: Variant, params: Dictionary = {}) -> Dictionary:
 	# Monitores del juego (performance:profile_frame). Los nombres estándar de
 	# Godot son fijos y conocidos; los custom llegan vía profile_names.
 	var metrics: Array = []

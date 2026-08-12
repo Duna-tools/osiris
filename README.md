@@ -114,6 +114,7 @@ osiris-server [options]
 | Tool | Profile | Description |
 |---|---|---|
 | `osiris_diagnose` | read | Server name, version, protocol versions |
+| `osiris.state` | read | Current state machine (editor, game, debugger session, input) |
 | `osiris.capabilities` | read | Catalog of capabilities, tools, Godot and protocol |
 | `osiris.run.history` | read | Persisted run history (scene, duration, output, errors) |
 | `godot_diagnose` | read | Godot version + project name |
@@ -124,11 +125,21 @@ osiris-server [options]
 | `godot.scene.resources` | read | List resources referenced by a node |
 | `godot.editor.errors` | read | Runtime errors of the running game (via debugger) |
 | `godot.scene.create_node` | edit | Create a node (undo/redo) |
+| `godot.scene.duplicate` | edit | Duplicate a node (deep copy, undo/redo) |
+| `godot.scene.instance` | edit | Instance a packed scene (res://*.tscn) as child |
 | `godot.scene.remove_node` | edit | Remove a node (undo/redo) |
 | `godot.scene.set_property` | edit | Change a property (undo/redo) |
 | `godot.scene.save` | edit | Save active scene to disk |
+| `godot.scene.open` | edit | Open a scene (res://*.tscn) in the editor |
+| `godot.scene.create` | edit | Create a new scene (res://*.tscn) and open it |
+| `godot.scene.select` | edit | Select nodes in the editor tree (visual feedback) |
+| `godot.scene.screenshot` | read | Capture the editor viewport (2D/3D) to a PNG |
+| `godot.project.autoload` | edit | Register an autoload singleton in project.godot |
+| `godot.inputmap.add` | edit | Register an InputMap action and persist it |
+| `godot.scenes.open` | read | List the scenes currently open in the editor |
+| `godot.export` | edit | Export the project to an export preset (release/debug) |
 | `scene.apply` | edit | Apply a list of scene operations in one call |
-| `object.call` | edit | Call a method on a node with arguments |
+| `object.call` | edit | Call a method on a node or resource with args, supports $res references |
 | `object.property.get` | read | Read a property of a node or resource |
 | `object.property.set` | edit | Write a property of a node (undo/redo) or resource |
 | `godot.script.validate` | read | Validate GDScript syntax |
@@ -136,13 +147,16 @@ osiris-server [options]
 | `godot.signal.list` | read | List signals of a node |
 | `godot.signal.connect` | edit | Connect a signal to a method |
 | `godot.signal.disconnect` | edit | Disconnect a signal |
+| `godot.signal.emit` | edit | Emit a signal with optional arguments |
 | `godot.asset.list` | read | List assets with import status |
 | `godot.asset.reimport` | edit | Reimport an asset |
 | `godot.resource.assign` | edit | Load a resource and assign it to a property |
+| `godot.resource.create` | edit | Create a new resource (Animation, Theme, SpriteFrames, ...) |
 | `godot.project.files` | read | List project source files |
 | `godot.project.settings.get` | read | Read project settings |
 | `godot.project.settings.set` | edit | Write and persist project settings |
 | `godot.run` | admin | Run the project (with debugger) |
+| `godot.input.send` | admin | Inject an input (key or action) into the running game |
 | `godot.stop` | admin | Stop the project |
 | `godot.run.status` | read | Check if the project is running |
 | `godot.run.output` | read | Output of the running game |
@@ -158,6 +172,15 @@ osiris-server [options]
 ## Per-client MCP setup
 
 The token lives at `your-project/.godot/osiris_ipc_token` (stable) and at `~/.local/share/godot/app_userdata/<Project>/osiris_ipc_token`. Use an absolute path if the binary is not on `PATH`; use `--log-level debug` for diagnostics (logs go to stderr).
+
+**Automatic installer** — register Osiris in every installed LLM CLI (opencode, codex, agy, Claude) in one shot:
+
+```bash
+scripts/osiris-install.sh          # install into all detected CLIs (idempotent)
+scripts/osiris-install.sh --remove # remove from all detected CLIs
+```
+
+While a session is running, the CLI shows Osiris in its status bar (e.g. opencode shows `⊙ N MCP` counting the connected Osiris server).
 
 **Generic stdio client** (any MCP client that launches a local command) — use the wrapper to auto-detect the Godot project and the admin profile:
 
@@ -360,6 +383,7 @@ osiris-server [opciones]
 | Herramienta | Perfil | Descripción |
 |---|---|---|
 | `osiris_diagnose` | read | Nombre, versión y versiones de protocolo |
+| `osiris.state` | read | Estado actual (editor, juego, sesión debugger, input) |
 | `osiris.capabilities` | read | Catálogo de capacidades, tools, Godot y protocolo |
 | `osiris.run.history` | read | Historial de ejecuciones persistido (escena, duración, salida, errores) |
 | `godot_diagnose` | read | Versión de Godot + nombre del proyecto |
@@ -373,8 +397,16 @@ osiris-server [opciones]
 | `godot.scene.remove_node` | edit | Eliminar un nodo (undo/redo) |
 | `godot.scene.set_property` | edit | Cambiar una propiedad (undo/redo) |
 | `godot.scene.save` | edit | Guardar escena activa |
+| `godot.scene.open` | edit | Abrir una escena (res://*.tscn) en el editor |
+| `godot.scene.create` | edit | Crear una escena nueva (res://*.tscn) y abrirla |
+| `godot.scene.select` | edit | Seleccionar nodos en el árbol del editor (feedback visual) |
+| `godot.scene.screenshot` | read | Capturar el viewport del editor (2D/3D) a PNG |
+| `godot.project.autoload` | edit | Registrar un autoload singleton en project.godot |
+| `godot.inputmap.add` | edit | Registrar una acción de InputMap y persistirla |
+| `godot.scenes.open` | read | Listar las escenas abiertas en el editor |
+| `godot.export` | edit | Exportar el proyecto a un preset (release/debug) |
 | `scene.apply` | edit | Aplicar una lista de operaciones de escena en una llamada |
-| `object.call` | edit | Llamar un método de un nodo con argumentos |
+| `object.call` | edit | Llamar un método de un nodo o recurso con args, soporta $res para recursos |
 | `object.property.get` | read | Leer propiedad de un nodo o recurso |
 | `object.property.set` | edit | Escribir propiedad de un nodo (undo/redo) o recurso |
 | `godot.script.validate` | read | Validar sintaxis GDScript |
@@ -382,13 +414,16 @@ osiris-server [opciones]
 | `godot.signal.list` | read | Listar señales de un nodo |
 | `godot.signal.connect` | edit | Conectar una señal a un método |
 | `godot.signal.disconnect` | edit | Desconectar una señal |
+| `godot.signal.emit` | edit | Emitir una señal con argumentos opcionales |
 | `godot.asset.list` | read | Listar assets con estado de importación |
 | `godot.asset.reimport` | edit | Reimportar un asset |
 | `godot.resource.assign` | edit | Cargar un recurso y asignarlo a una propiedad |
+| `godot.resource.create` | edit | Crear un recurso nuevo (Animation, Theme, SpriteFrames, ...) |
 | `godot.project.files` | read | Listar archivos fuente del proyecto |
 | `godot.project.settings.get` | read | Leer settings del proyecto |
 | `godot.project.settings.set` | edit | Escribir y persistir settings del proyecto |
 | `godot.run` | admin | Ejecutar el proyecto (con debugger) |
+| `godot.input.send` | admin | Inyectar un input (tecla o acción) en el juego en ejecución |
 | `godot.stop` | admin | Detener el proyecto |
 | `godot.run.status` | read | Consultar si el proyecto está en ejecución |
 | `godot.run.output` | read | Salida del juego en ejecución |
@@ -404,6 +439,15 @@ osiris-server [opciones]
 ## Configuración por cliente MCP
 
 El token está en `tu-proyecto/.godot/osiris_ipc_token` (estable) y en `~/.local/share/godot/app_userdata/<Proyecto>/osiris_ipc_token`. Usa ruta absoluta si el binario no está en `PATH`; usa `--log-level debug` para diagnóstico (los logs van a stderr).
+
+**Instalador automático** — registra Osiris en todos los CLIs de LLM instalados (opencode, codex, agy, Claude) de una vez:
+
+```bash
+scripts/osiris-install.sh          # instala en todos los CLIs detectados (idempotente)
+scripts/osiris-install.sh --remove # quita de todos los CLIs detectados
+```
+
+Con una sesión activa, el CLI muestra Osiris en su barra de estado (ej: opencode muestra `⊙ N MCP` contando el server Osiris conectado).
 
 **Cliente stdio genérico** (cualquier cliente MCP que lance un comando local) — usa el wrapper para auto-detectar el proyecto Godot y el perfil admin:
 

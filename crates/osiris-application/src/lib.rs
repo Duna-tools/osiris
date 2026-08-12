@@ -43,6 +43,12 @@ static TOOLS: &[ToolSpec] = &[
         handler: local_diagnose,
     },
     ToolSpec {
+        name: "osiris.state",
+        op: Some("get_state"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot_diagnose",
         op: Some("get_version"),
         effect: Effect::Read,
@@ -81,6 +87,30 @@ static TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "godot.scene.create_node",
         op: Some("create_node"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.node.tween",
+        op: Some("create_tween"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.node.desc",
+        op: Some("set_description"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.node.unique",
+        op: Some("set_unique_name"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.node.reparent",
+        op: Some("reparent_node"),
         effect: Effect::Write,
         handler: ipc_plain,
     },
@@ -127,14 +157,128 @@ static TOOLS: &[ToolSpec] = &[
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "godot.scene.save_as",
+        op: Some("save_scene_as"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.save_all",
+        op: Some("save_all_scenes"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.unsaved",
+        op: Some("unsaved_scenes"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.open",
+        op: Some("open_scene"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.create",
+        op: Some("create_scene"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.select",
+        op: Some("select_nodes"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.duplicate",
+        op: Some("duplicate_node"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.instance",
+        op: Some("instance_scene"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.move",
+        op: Some("move_node"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.inputmap.add",
+        op: Some("inputmap_add"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scenes.open",
+        op: Some("open_scenes"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.export",
+        op: Some("export_project"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.scene.screenshot",
+        op: Some("editor_screenshot"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.project.autoload",
+        op: Some("add_autoload"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.run",
         op: Some("run_project"),
         effect: Effect::Write,
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "godot.input.send",
+        op: Some("input_send"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.stop",
         op: Some("stop_project"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.editor.reload",
+        op: Some("reload_editor"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.editor.inspect",
+        op: Some("inspect_node"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.editor.settings.get",
+        op: Some("editor_settings_get"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.editor.settings.set",
+        op: Some("editor_settings_set"),
         effect: Effect::Write,
         handler: ipc_plain,
     },
@@ -199,6 +343,42 @@ static TOOLS: &[ToolSpec] = &[
         handler: ipc_plain,
     },
     ToolSpec {
+        name: "godot.signal.emit",
+        op: Some("emit_signal"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.group.add",
+        op: Some("add_to_group"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.group.remove",
+        op: Some("remove_from_group"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.group.list",
+        op: Some("get_groups"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.tree.nodes_in_group",
+        op: Some("nodes_in_group"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.input.query",
+        op: Some("input_query"),
+        effect: Effect::Read,
+        handler: ipc_plain,
+    },
+    ToolSpec {
         name: "godot.asset.list",
         op: Some("asset_list"),
         effect: Effect::Read,
@@ -231,6 +411,12 @@ static TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "godot.resource.assign",
         op: Some("resource_assign"),
+        effect: Effect::Write,
+        handler: ipc_plain,
+    },
+    ToolSpec {
+        name: "godot.resource.create",
+        op: Some("resource_create"),
         effect: Effect::Write,
         handler: ipc_plain,
     },
@@ -304,20 +490,25 @@ struct Skill {
 static SKILLS: &[Skill] = &[
     Skill {
         name: "setup_2d_player",
-        description: "Crea un player 2D básico (CharacterBody2D con Sprite2D) en la escena activa.",
+        description: "Crea un player 2D básico (CharacterBody2D con Sprite2D y CollisionShape2D) en la escena activa, incluyendo input actions.",
         uses: &[
             "godot.describe",
             "godot.scene.create_node",
             "godot.scene.set_property",
+            "godot.scene.duplicate",
             "godot.resource.assign",
+            "godot.resource.create",
             "godot.script.validate",
+            "godot.script.write",
             "godot.signal.connect",
+            "godot.inputmap.add",
         ],
         knowledge: &[
-            "CharacterBody2D es la base de movimiento para jugadores 2D",
-            "El movimiento usa velocity + move_and_slide() en _physics_process",
-            "El InputMap requiere acciones de entrada antes de usar Input.get_vector()",
-            "Los scripts se validan con godot.script.validate antes de escribir en disco",
+            "CharacterBody2D es la base de movimiento para jugadores 2D; movimiento usa velocity + move_and_slide() en _physics_process",
+            "Crea las acciones de input ANTES de escribir el script: usa godot.inputmap.add para 'move_left', 'move_right', 'jump'",
+            "El player necesita CollisionShape2D con un RectangleShape2D o CircleShape2D como hijo",
+            "Los scripts se validan con godot.script.validate antes de escribir con godot.script.write",
+            "Para sprites animados usa AnimatedSprite2D + SpriteFrames (godot.resource.create + godot.resource.assign)",
         ],
     },
     Skill {
@@ -326,12 +517,141 @@ static SKILLS: &[Skill] = &[
         uses: &[
             "godot.describe",
             "godot.scene.create_node",
+            "godot.scene.set_property",
             "godot.signal.connect",
+            "godot.signal.emit",
         ],
         knowledge: &[
             "Button extiende BaseButton; la señal pressed se emite al hacer clic",
-            "El método destino debe existir en el nodo receptor",
-            "Connectar con deferred=false ejecuta la llamada de inmediato",
+            "El método destino debe existir en el nodo receptor; usa godot.script.validate + godot.script.write para crearlo",
+            "godot.signal.emit permite disparar la señal manualmente para probar",
+        ],
+    },
+    Skill {
+        name: "create_scene",
+        description: "Crea una escena nueva (res://*.tscn) con una raíz del tipo especificado y la estructura básica.",
+        uses: &[
+            "godot.scene.create",
+            "godot.scene.open",
+            "godot.scene.create_node",
+            "godot.scene.set_property",
+            "godot.scene.save",
+            "godot.scenes.open",
+        ],
+        knowledge: &[
+            "godot.scene.create crea y abre una escena vacía con el nodo raíz dado",
+            "Tras crear la escena, usa godot.scene.create_node para añadir hijos",
+            "godot.scene.open abre una escena existente; usa godot.scenes.open para listar las abiertas",
+            "Guarda con godot.scene.save antes de cambiar a otra escena",
+        ],
+    },
+    Skill {
+        name: "setup_input",
+        description: "Configura las acciones de input del proyecto (InputMap) para gameplay.",
+        uses: &["godot.inputmap.add", "godot.project.autoload"],
+        knowledge: &[
+            "godot.inputmap.add crea una acción de InputMap y la persiste en project.godot",
+            "Acciones comunes 2D: ui_left, ui_right, ui_up, ui_down, jump, attack",
+            "Acciones del demo truck-town: accelerate, reverse, turn_left, turn_right, boost, honk",
+            "Para input avanzado (teclas personalizadas), usa godot.project.settings.set con 'input/<accion>'",
+            "El autoload OsirisInput permite al LLM enviar input al juego en ejecución (godot.input.send)",
+        ],
+    },
+    Skill {
+        name: "create_sprite_animation",
+        description: "Crea SpriteFrames con animaciones para un AnimatedSprite2D.",
+        uses: &[
+            "godot.resource.create",
+            "godot.resource.assign",
+            "godot.scene.set_property",
+            "godot.describe",
+        ],
+        knowledge: &[
+            "godot.resource.create con type='SpriteFrames' crea los frames vacíos; luego usa object.call con object='res://...' para add_animation y add_frame",
+            "Asigna los SpriteFrames a un AnimatedSprite2D con godot.resource.assign en la propiedad 'sprite_frames'",
+            "object.call acepta object (res://) para llamar métodos en recursos: add_animation('walk'), add_frame('walk', texture, 0.1)",
+            "Para textures usa godot.asset.list para ver assets disponibles y object.call con $res para pasarlos",
+        ],
+    },
+    Skill {
+        name: "game_loop",
+        description: "Máquina de estados del desarrollo: qué transición hacer en cada estado. Consulta osiris.state antes de cada paso.",
+        uses: &[
+            "osiris.state",
+            "godot.scene.save",
+            "godot.run",
+            "godot.input.send",
+            "godot.runtime.tree",
+            "godot.scene.screenshot",
+            "godot.editor.errors",
+            "godot.script.validate",
+            "godot.script.write",
+            "godot.stop",
+            "godot.export",
+            "godot.resource.create",
+        ],
+        knowledge: &[
+            "El desarrollo es un DFA: consulta osiris.state, lee en qué estado estás y aplica la única transición válida.",
+            "ESTADO edit -> RUN: modifica la escena (scene.create/apply/set_property/duplicate/instance), guarda (scene.save), luego godot.run.",
+            "ESTADO run -> observe: tras godot.run, verifica osiris.state.debugger_session=connected; si es pending, reintenta en ~2s.",
+            "ESTADO observe -> act: runtime.tree para ver el árbol, input.send para enviar input (accelerate/turn_left/turn_right/reverse/boost/honk en truck-town).",
+            "ESTADO observe -> fix: si editor.errors tiene errores, corrige con script.validate + script.write y vuelve a RUN. Crea sprites con resource.create.",
+            "ESTADO observe -> done: si el objetivo se cumplió, godot.stop y export si corresponde.",
+            "Siempre consulta osiris.state antes de una tool de transición: evita llamar godot.run si game.running=true, o input.send si debugger_session != connected.",
+        ],
+    },
+    Skill {
+        name: "setup_physics",
+        description: "Configura collision layers y shapes para física 2D/3D en Godot.",
+        uses: &[
+            "godot.resource.create",
+            "godot.resource.assign",
+            "godot.scene.set_property",
+            "godot.scene.create_node",
+            "object.call",
+        ],
+        knowledge: &[
+            "Colisiones 2D: crea un CollisionShape2D como hijo del cuerpo, crea un RectangleShape2D o CircleShape2D con resource.create, ajusta size con object.call, asigna con resource.assign",
+            "Ejemplo: resource.create(type='RectangleShape2D', path='res://shapes/player_shape.tres') → object.call(object='res://shapes/player_shape.tres', method='set_size', args=[{'x':64,'y':64}]) → resource.assign(path='Player', property='shape', resource='res://...')",
+            "Collision layers: scene.set_property(path='Player', property='collision_layer', value=1) y collision_mask=1 para colisionar con el layer 1",
+            "Para StaticBody2D/RigidBody2D: scene.set_property para collision_layer/collision_mask (bitmask int)",
+            "Area2D usa body_entered/area_entered signals (godot.signal.connect) para detectar colisiones",
+        ],
+    },
+    Skill {
+        name: "setup_navigation",
+        description: "Configura navegación 2D con NavigationRegion2D y NavigationAgent2D para pathfinding.",
+        uses: &[
+            "godot.resource.create",
+            "godot.resource.assign",
+            "godot.scene.create_node",
+            "godot.scene.set_property",
+            "object.call",
+            "godot.signal.connect",
+        ],
+        knowledge: &[
+            "Crea NavigationRegion2D como hijo de la escena. Crea NavigationPolygon con resource.create(type='NavigationPolygon'). Usa object.call para añadir vertices y polígonos",
+            "NavigationAgent2D va en el personaje (CharacterBody2D): crealo como hijo, conecta signal 'navigation_finished'",
+            "En el script del personaje: navigation_agent.target_position = destino; luego en _physics_process: var dir = (navigation_agent.get_next_path_position() - global_position).normalized(); velocity = dir * speed",
+            "La navegación requiere un NavigationRegion2D baked (con polígono) y agentes configurados con velocidad y radio",
+        ],
+    },
+    Skill {
+        name: "setup_animation",
+        description: "Crea animaciones con AnimationPlayer y AnimationLibrary.",
+        uses: &[
+            "godot.scene.create_node",
+            "godot.resource.create",
+            "godot.resource.assign",
+            "object.call",
+            "godot.scene.set_property",
+        ],
+        knowledge: &[
+            "Crea AnimationPlayer como hijo del nodo a animar. Crea Animation resource: godot.resource.create(type='Animation', path='res://animations/player.tres')",
+            "Añade la animación al player: object.call sobre el AnimationPlayer para acceder a animation_library, o usa object.call(object='res://...', method='add_track', args=[TYPE_VALUE, 0]) donde TYPE_VALUE=0",
+            "Añade keyframes con object.call: track_insert_key(track_idx, time, value). Para posición: track_set_key_value(track_idx, key_idx, Vector2(x,y))",
+            "Tipos de track: 0=value, 1=position (3D), 2=rotation (3D), 3=scale (3D). Para 2D usa value con property 'position'",
+            "Reproduce con object.call: play('anim_name') y deten con stop()",
         ],
     },
 ];
@@ -441,6 +761,21 @@ pub fn effect_of(tool: &str) -> Option<Effect> {
     find_tool(tool).map(|t| t.effect)
 }
 
+/// Tools de estado vivo cuyas lecturas NO deben cachearse: datos volátiles que
+/// cambian entre llamadas con los mismos parámetros (ej: run.status, runtime.tree,
+/// editor.errors). Cachearlas devuelve datos obsoletos al LLM.
+const UNCACHEABLE: &[&str] = &[
+    "godot.editor.errors",
+    "godot.run.status",
+    "godot.run.output",
+    "godot.runtime.tree",
+    "godot.runtime.metrics",
+    "debug.inspect",
+    "runtime.capture",
+    "godot.scene.screenshot",
+    "osiris.state",
+];
+
 /// Despacha el `tools/call` hacia la herramienta registrada.
 ///
 /// `profile` determina las capacidades del cliente (ADR-005).
@@ -458,7 +793,7 @@ pub fn handle_tool(
     let spec = find_tool(name)
         .ok_or_else(|| DomainError::Validation(format!("herramienta desconocida: {name}")))?;
 
-    if spec.effect == Effect::Write {
+    if spec.effect == Effect::Write || UNCACHEABLE.contains(&name) {
         let ipc_short = ipc.map(|i| &mut *i);
         let cache_short: &mut IdempotencyCache = &mut *cache;
         (spec.handler)(spec, params, ipc_short, cache_short, profile)

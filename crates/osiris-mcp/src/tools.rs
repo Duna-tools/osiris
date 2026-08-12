@@ -46,6 +46,12 @@ fn all_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
         json!({
+            "name": "osiris.state",
+            "title": "Estado actual",
+            "description": "Estado completo de la máquina (editor + juego + sesión debugger + input). Consulta esto ANTES de elegir la siguiente tool: cada estado tiene una transición válida.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
             "name": "godot_diagnose",
             "title": "Diagnóstico Godot",
             "description": "Devuelve la versión de Godot y el nombre del proyecto.",
@@ -104,6 +110,30 @@ fn all_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "path": {"type":"string"}, "type": {"type":"string"}, "name": {"type":"string"} }, "required": ["path","type","name"], "additionalProperties": false }
         }),
         json!({
+            "name": "godot.node.tween",
+            "title": "Crear Tween",
+            "description": "Crea un Tween en un nodo para animaciones. Usa object.call sobre el Tween devuelto. Requiere perfil edit.",
+            "inputSchema": { "type": "object", "properties": { "path": {"type":"string"} }, "required": ["path"], "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.node.desc",
+            "title": "Descripcion de nodo",
+            "description": "Asigna una descripcion en el editor al nodo (visible en el inspector). Requiere perfil edit.",
+            "inputSchema": { "type": "object", "properties": { "path": {"type":"string"}, "description": {"type":"string"} }, "required": ["path","description"], "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.node.unique",
+            "title": "Acceso unico",
+            "description": "Marca/desmarca un nodo con acceso % (set_unique_name_in_owner). Requiere perfil edit.",
+            "inputSchema": { "type": "object", "properties": { "path": {"type":"string"}, "enable": {"type":"boolean"} }, "required": ["path"], "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.node.reparent",
+            "title": "Redpadrear nodo",
+            "description": "Cambia el padre de un nodo preservando la transformacion global (Node.reparent). Requiere perfil edit.",
+            "inputSchema": { "type": "object", "properties": { "path": {"type":"string"}, "new_parent": {"type":"string"}, "keep_transform": {"type":"boolean"} }, "required": ["path","new_parent"], "additionalProperties": false }
+        }),
+        json!({
             "name": "scene.apply",
             "title": "Aplicar operaciones de escena",
             "description": "Ejecuta una lista de operaciones de escena (create_node, remove_node, move_node, set_property, instance_scene) en orden, cada una con Undo/Redo. Requiere perfil edit.",
@@ -134,15 +164,15 @@ fn all_tools() -> Vec<Value> {
         json!({
             "name": "object.call",
             "title": "Llamar método",
-            "description": "Invoca un método de un nodo con argumentos. Requiere perfil edit.",
+            "description": "Invoca un método de un nodo (path) o recurso (object res://). Args soportan {\"$res\": \"res://\"} para pasar recursos. Requiere perfil edit.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "path": { "type": "string", "description": "NodePath del nodo." },
+                    "path": { "type": "string", "description": "NodePath (para nodos) o usar object (para recursos)." },
+                    "object": { "type": "string", "description": "Ruta res:// del recurso (alternativa a path)." },
                     "method": { "type": "string", "description": "Nombre del método." },
-                    "args": { "type": "array", "description": "Argumentos (convertidos a Variant)." }
+                    "args": { "type": "array", "description": "Argumentos. Usa {\"$res\":\"res://\"} para recursos." }
                 },
-                "required": ["path", "method"],
                 "additionalProperties": false
             }
         }),
@@ -184,6 +214,173 @@ fn all_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         }),
         json!({
+            "name": "godot.scene.save_as",
+            "title": "Guardar escena como",
+            "description": "Guarda la escena activa con un nuevo path (res://*.tscn). Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": { "type": "string", "description": "Nueva ruta res:// de la escena." } },
+                "required": ["path"], "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.scene.save_all",
+            "title": "Guardar todas",
+            "description": "Guarda todas las escenas abiertas. Requiere perfil edit.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.scene.unsaved",
+            "title": "Escenas sin guardar",
+            "description": "Lista las escenas con cambios sin guardar. Solo lectura.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.scenes.open",
+            "title": "Escenas abiertas",
+            "description": "Lista las escenas abiertas en el editor. Solo lectura.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.scene.open",
+            "title": "Abrir escena",
+            "description": "Abre una escena (res://*.tscn) en el editor. Fallo si hay escenas sin guardar: guarda primero (godot.scene.save). Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Ruta res:// de la escena a abrir (ej: res://scenes/menu.tscn)." }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.scene.create",
+            "title": "Crear escena",
+            "description": "Crea una escena nueva (res://*.tscn) con una raíz del tipo dado y la deja abierta en el editor. Fallo si hay escenas sin guardar. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Ruta res:// de la nueva escena (ej: res://scenes/menu.tscn)." },
+                    "type": { "type": "string", "description": "Tipo del nodo raíz (default Node2D)." },
+                    "name": { "type": "string", "description": "Nombre del nodo raíz (default: el tipo)." }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.scene.duplicate",
+            "title": "Duplicar nodo",
+            "description": "Duplica un nodo (duplicado profundo) como hermano, con Undo/Redo. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo a duplicar." },
+                    "name": { "type": "string", "description": "Nombre del duplicado (default: nombre original)." }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.scene.instance",
+            "title": "Instanciar escena",
+            "description": "Instancia una escena empaquetada (res://*.tscn) como hijo de un nodo, con Undo/Redo. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo padre." },
+                    "scene": { "type": "string", "description": "Ruta res:// de la escena a instanciar." },
+                    "name": { "type": "string", "description": "Nombre del nodo instanciado (default: el de la escena)." }
+                },
+                "required": ["path", "scene"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.scene.move",
+            "title": "Mover nodo",
+            "description": "Mueve un nodo a un nuevo padre con Undo/Redo. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo a mover." },
+                    "new_parent": { "type": "string", "description": "NodePath del nuevo padre." },
+                    "new_name": { "type": "string", "description": "Nuevo nombre opcional." }
+                },
+                "required": ["path", "new_parent"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.inputmap.add",
+            "title": "Registrar acción de input",
+            "description": "Crea una acción de InputMap y la persiste en project.godot. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": { "type": "string", "description": "Nombre de la acción (ej: ui_left, jump)." }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.scene.select",
+            "title": "Seleccionar nodos",
+            "description": "Selecciona nodos (si pasas paths) o lee la selección actual (sin paths). Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "paths": { "type": "array", "items": { "type": "string" }, "description": "NodePaths a seleccionar. Sin paths = solo leer selección actual." }
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.scene.screenshot",
+            "title": "Screenshot del editor",
+            "description": "Captura el viewport del editor (2D o 3D) a un PNG. Solo lectura.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "view3d": { "type": "boolean", "description": "true = viewport 3D, false (default) = viewport 2D." },
+                    "output": { "type": "string", "description": "Ruta de salida user:// o res:// (default user://osiris_editor_shot.png)." }
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.project.autoload",
+            "title": "Registrar autoload",
+            "description": "Registra un autoload singleton en project.godot (se instancia al siguiente arranque del proyecto). Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Nombre del singleton (ej: GameManager)." },
+                    "path": { "type": "string", "description": "Ruta res:// del script (ej: res://game_manager.gd)." }
+                },
+                "required": ["name", "path"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.export",
+            "title": "Exportar proyecto",
+            "description": "Exporta el proyecto a un preset de export_presets.cfg (release o debug). Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "preset": { "type": "string", "description": "Nombre del preset definido en export_presets.cfg." },
+                    "output": { "type": "string", "description": "Ruta de salida (ej: build/game.exe o build/game.pck)." },
+                    "debug": { "type": "boolean", "description": "true = --export-debug, false (default) = --export-release." }
+                },
+                "required": ["preset", "output"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.run",
             "title": "Ejecutar proyecto",
             "description": "Inicia la ejecución del proyecto o de una escena específica. Requiere perfil admin.",
@@ -197,10 +394,70 @@ fn all_tools() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "godot.input.send",
+            "title": "Enviar input al juego",
+            "description": "Inyecta un input (tecla o acción) en el juego en ejecución vía Live Edit. Requiere perfil admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "input": {
+                        "type": "object",
+                        "description": "Dict: {\"key\": \"W\", \"pressed\": true} o {\"action\": \"jump\", \"pressed\": true}.",
+                        "properties": {
+                            "key": { "type": "string", "description": "Nombre de la tecla (ej: W, Space, ui_left)." },
+                            "action": { "type": "string", "description": "Acción de InputMap (ej: jump)." },
+                            "pressed": { "type": "boolean", "description": "true = pulsada, false = soltada." }
+                        }
+                    }
+                },
+                "required": ["input"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "godot.stop",
             "title": "Detener proyecto",
             "description": "Detiene la ejecución del proyecto. Requiere perfil admin.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.editor.reload",
+            "title": "Recargar editor",
+            "description": "Recarga silenciosamente las escenas abiertas desde disco (evita el dialogo 'files changed, reload?'). Usalo tras modificar archivos externamente. Requiere perfil edit.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.editor.inspect",
+            "title": "Inspeccionar nodo",
+            "description": "Abre el inspector del editor en un nodo (path) o lo limpia (sin path). Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": { "type": "string", "description": "NodePath. Sin path = limpiar inspector." } },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.editor.settings.get",
+            "title": "Leer config del editor",
+            "description": "Lee una setting del Editor (EditorSettings). Solo lectura.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "name": { "type": "string", "description": "Nombre de la setting (ej: interface/theme/base_color)." } },
+                "required": ["name"], "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.editor.settings.set",
+            "title": "Escribir config del editor",
+            "description": "Cambia una setting del Editor (EditorSettings). Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "value": { "description": "Nuevo valor." }
+                },
+                "required": ["name", "value"], "additionalProperties": false
+            }
         }),
         json!({
             "name": "godot.run.status",
@@ -332,6 +589,74 @@ fn all_tools() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "godot.signal.emit",
+            "title": "Emitir señal",
+            "description": "Emite una señal en un nodo con argumentos opcionales. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath del nodo." },
+                    "signal": { "type": "string", "description": "Nombre de la señal." },
+                    "args": { "type": "array", "description": "Argumentos de la señal." }
+                },
+                "required": ["path", "signal"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.group.add",
+            "title": "Añadir a grupo",
+            "description": "Añade un nodo a un grupo (Node.add_to_group). Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "NodePath." },
+                    "group": { "type": "string", "description": "Nombre del grupo." }
+                },
+                "required": ["path", "group"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.group.remove",
+            "title": "Quitar de grupo",
+            "description": "Quita un nodo de un grupo. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" },
+                    "group": { "type": "string" }
+                },
+                "required": ["path", "group"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.group.list",
+            "title": "Listar grupos",
+            "description": "Lista los grupos a los que pertenece un nodo. Solo lectura.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.tree.nodes_in_group",
+            "title": "Nodos en grupo",
+            "description": "Devuelve todos los nodos de la escena activa que pertenecen a un grupo. Solo lectura.",
+            "inputSchema": { "type": "object", "properties": { "group": {"type":"string"} }, "required": ["group"], "additionalProperties": false }
+        }),
+        json!({
+            "name": "godot.input.query",
+            "title": "Consultar input",
+            "description": "Lee el estado de input (is_action_pressed, get_vector, is_key_pressed). Solo lectura.",
+            "inputSchema": { "type": "object", "properties": { "actions": {"type":"array"}, "keys": {"type":"array"}, "vector": {"type":"string"} }, "additionalProperties": false }
+        }),
+        json!({
             "name": "godot.asset.list",
             "title": "Listar assets",
             "description": "Enumera archivos del proyecto (recursivo) con tipo y estado de importación.",
@@ -408,6 +733,21 @@ fn all_tools() -> Vec<Value> {
                     "resource": { "type": "string", "description": "Ruta res:// del recurso (ej: res://icon.svg)." }
                 },
                 "required": ["path", "property", "resource"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "godot.resource.create",
+            "title": "Crear recurso",
+            "description": "Crea un recurso nuevo (Animation, Theme, SpriteFrames, ShaderMaterial...) y lo guarda a res://*.tres. Requiere perfil edit.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "type": { "type": "string", "description": "Clase del recurso (ej: Animation, Theme, SpriteFrames)." },
+                    "path": { "type": "string", "description": "Ruta res:// de salida (ej: res://assets/player_anim.tres)." },
+                    "properties": { "type": "object", "description": "Propiedades iniciales (opcional), dict nombre -> valor." }
+                },
+                "required": ["type", "path"],
                 "additionalProperties": false
             }
         }),
@@ -519,6 +859,7 @@ pub fn call(
         .ok_or_else(|| RpcError::new(INVALID_PARAMS, "params.name requerido"))?;
     match name {
         "osiris_diagnose"
+        | "osiris.state"
         | "godot_diagnose"
         | "godot.scene.active"
         | "godot.scene.nodes"
@@ -526,6 +867,10 @@ pub fn call(
         | "godot.scene.resources"
         | "godot.editor.errors"
         | "godot.scene.create_node"
+        | "godot.node.tween"
+        | "godot.node.desc"
+        | "godot.node.unique"
+        | "godot.node.reparent"
         | "godot.scene.remove_node"
         | "godot.scene.set_property"
         | "scene.apply"
@@ -533,8 +878,27 @@ pub fn call(
         | "object.property.get"
         | "object.property.set"
         | "godot.scene.save"
+        | "godot.scene.save_as"
+        | "godot.scene.save_all"
+        | "godot.scene.unsaved"
+        | "godot.scene.open"
+        | "godot.scene.create"
+        | "godot.scene.select"
+        | "godot.scene.duplicate"
+        | "godot.scene.instance"
+        | "godot.scene.move"
+        | "godot.inputmap.add"
+        | "godot.scene.screenshot"
+        | "godot.project.autoload"
+        | "godot.scenes.open"
+        | "godot.export"
         | "godot.run"
+        | "godot.input.send"
         | "godot.stop"
+        | "godot.editor.reload"
+        | "godot.editor.inspect"
+        | "godot.editor.settings.get"
+        | "godot.editor.settings.set"
         | "godot.run.status"
         | "godot.run.output"
         | "osiris.run.history"
@@ -545,12 +909,19 @@ pub fn call(
         | "godot.signal.list"
         | "godot.signal.connect"
         | "godot.signal.disconnect"
+        | "godot.signal.emit"
+        | "godot.group.add"
+        | "godot.group.remove"
+        | "godot.group.list"
+        | "godot.tree.nodes_in_group"
+        | "godot.input.query"
         | "godot.asset.list"
         | "godot.project.files"
         | "godot.project.settings.get"
         | "godot.project.settings.set"
         | "godot.asset.reimport"
         | "godot.resource.assign"
+        | "godot.resource.create"
         | "plan.validate"
         | "plan.execute"
         | "skill.list"

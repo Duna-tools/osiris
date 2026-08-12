@@ -45,7 +45,14 @@ const MUTATING_OPS: &[&str] = &[
     "asset_reimport",
     "resource_assign",
     "project_settings_set",
+    "open_scene",
+    "export_project",
 ];
+
+/// Operaciones que duran más que el timeout de lectura general (el bridge las
+/// ejecuta de forma síncrona: export lanza un subproceso headless que puede
+/// tardar decenas de segundos). Se les aplica un timeout propio.
+const LONG_OPS: &[(&str, Duration)] = &[("export_project", Duration::from_secs(300))];
 
 impl std::fmt::Debug for IpcClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -138,6 +145,14 @@ impl IpcClient {
     }
 
     fn call_once(&mut self, op: &str, params: Value) -> Result<Value, DomainError> {
+        // Ajusta el read timeout por operación: las ops largas (export) no deben
+        // morir con el timeout de 3s pensado para el resto.
+        if let Some((_, long_timeout)) = LONG_OPS.iter().find(|(name, _)| *name == op) {
+            self.reader
+                .get_ref()
+                .set_read_timeout(Some(*long_timeout))
+                .map_err(|e| map_io(&e))?;
+        }
         let id = self.next_id;
         self.next_id += 1;
         self.send(&ClientMessage::Request {

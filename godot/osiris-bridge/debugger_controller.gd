@@ -8,9 +8,30 @@ extends EditorDebuggerPlugin
 ## Ver vault 18_errores_godot.md §7.
 
 var _session: Object = null
+var _plugin: Object = null
+
+func set_plugin(p: Object) -> void:
+	_plugin = p
 
 func _setup_session(session_id: int) -> void:
 	_session = get_session(session_id)
+	# Avisar al plugin: conecta debug_data a la sesión recién creada. El
+	# session_id es el índice del tab (editor_debugger_plugin.cpp:157), que
+	# coincide con el orden de los ScriptEditorDebugger bajo el dock.
+	if _plugin and _plugin.has_method("_on_session_created"):
+		var node: Node = _find_session_node(session_id)
+		if node:
+			_plugin.call("_on_session_created", node)
+
+func _find_session_node(idx: int) -> Node:
+	var plugin: EditorPlugin = _plugin
+	var base: Control = plugin.get_editor_interface().get_base_control()
+	if base == null:
+		return null
+	var sessions: Array = base.find_children("*", "ScriptEditorDebugger", true, false)
+	if idx >= 0 and idx < sessions.size():
+		return sessions[idx]
+	return null
 
 func request_tree() -> void:
 	if _session:
